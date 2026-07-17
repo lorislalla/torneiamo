@@ -1,7 +1,33 @@
-import { Minus, TrendingDown, TrendingUp } from "lucide-react";
-import type { Match, Participant } from "@/domain/types";
+"use client";
+
+import { useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronsUpDown,
+  Minus,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
+import { participantLabel } from "@/domain/participant-label";
+import type { Match, Participant, StandingRow } from "@/domain/types";
 import { calculateStandings } from "@/domain/tournament-engine";
+import { cn } from "@/lib/cn";
 import { PlayerMark } from "./ui";
+
+type SortKey =
+  | "position"
+  | "participant"
+  | "points"
+  | "played"
+  | "won"
+  | "drawn"
+  | "lost"
+  | "goalsFor"
+  | "goalsAgainst"
+  | "goalDifference";
+
+type SortDirection = "asc" | "desc";
 
 export function StandingsTable({
   participants,
@@ -12,6 +38,10 @@ export function StandingsTable({
   matches: Match[];
   qualifiedCount?: number;
 }) {
+  const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
+    key: "points",
+    direction: "desc",
+  });
   const participantById = new Map(
     participants.map((participant) => [participant.id, participant]),
   );
@@ -19,6 +49,26 @@ export function StandingsTable({
     participants.map((participant) => participant.id),
     matches,
   );
+  const sortedRows = [...rows].sort((first, second) => {
+    const comparison = compareRows(first, second, sort.key, participantById);
+    if (comparison === 0) return first.position - second.position;
+    return sort.direction === "asc" ? comparison : -comparison;
+  });
+
+  function changeSort(key: SortKey) {
+    setSort((current) => {
+      if (current.key === key) {
+        return {
+          key,
+          direction: current.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return {
+        key,
+        direction: key === "participant" || key === "position" ? "asc" : "desc",
+      };
+    });
+  }
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/8 bg-white/[.025]">
@@ -26,20 +76,20 @@ export function StandingsTable({
         <table className="w-full min-w-[590px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-white/8 text-left text-[11px] uppercase tracking-[0.12em] text-white/35">
-              <th className="w-12 px-4 py-3 text-center">#</th>
-              <th className="px-2 py-3 font-medium">Persona / squadra</th>
-              <th className="px-2 py-3 text-center font-medium">G</th>
-              <th className="px-2 py-3 text-center font-medium">V</th>
-              <th className="px-2 py-3 text-center font-medium">N</th>
-              <th className="px-2 py-3 text-center font-medium">P</th>
-              <th className="px-2 py-3 text-center font-medium">GF</th>
-              <th className="px-2 py-3 text-center font-medium">GS</th>
-              <th className="px-2 py-3 text-center font-medium">DR</th>
-              <th className="px-4 py-3 text-center font-medium">Pt</th>
+              <SortableHeader label="#" sortKey="position" sort={sort} onSort={changeSort} className="w-14 px-3" />
+              <SortableHeader label="Persona / squadra" sortKey="participant" sort={sort} onSort={changeSort} align="left" className="px-2" />
+              <SortableHeader label="Pt" sortKey="points" sort={sort} onSort={changeSort} className="px-3" />
+              <SortableHeader label="G" sortKey="played" sort={sort} onSort={changeSort} />
+              <SortableHeader label="V" sortKey="won" sort={sort} onSort={changeSort} />
+              <SortableHeader label="N" sortKey="drawn" sort={sort} onSort={changeSort} />
+              <SortableHeader label="P" sortKey="lost" sort={sort} onSort={changeSort} />
+              <SortableHeader label="GF" sortKey="goalsFor" sort={sort} onSort={changeSort} />
+              <SortableHeader label="GS" sortKey="goalsAgainst" sort={sort} onSort={changeSort} />
+              <SortableHeader label="DR" sortKey="goalDifference" sort={sort} onSort={changeSort} className="px-3" />
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
+            {sortedRows.map((row) => {
               const participant = participantById.get(row.participantId);
               if (!participant) return null;
               return (
@@ -67,6 +117,9 @@ export function StandingsTable({
                       </span>
                     </div>
                   </td>
+                  <td className="px-3 py-3 text-center font-mono font-semibold text-lime-200">
+                    {row.points}
+                  </td>
                   <Cell>{row.played}</Cell>
                   <Cell>{row.won}</Cell>
                   <Cell>{row.drawn}</Cell>
@@ -81,9 +134,6 @@ export function StandingsTable({
                       {row.goalDifference > 0 ? "+" : ""}{row.goalDifference}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center font-mono font-semibold text-lime-200">
-                    {row.points}
-                  </td>
                 </tr>
               );
             })}
@@ -91,9 +141,70 @@ export function StandingsTable({
         </table>
       </div>
       <div className="border-t border-white/8 px-4 py-3 text-xs text-white/35">
-        3 punti per vittoria · 1 per pareggio · spareggio: scontri diretti, differenza reti, gol fatti
+        Tocca una colonna per ordinarla · 3 punti per vittoria · 1 per pareggio · spareggio ufficiale: scontri diretti, differenza reti, gol fatti
       </div>
     </div>
+  );
+}
+
+function compareRows(
+  first: StandingRow,
+  second: StandingRow,
+  key: SortKey,
+  participantById: Map<string, Participant>,
+) {
+  if (key === "participant") {
+    const firstParticipant = participantById.get(first.participantId);
+    const secondParticipant = participantById.get(second.participantId);
+    const firstLabel = firstParticipant ? participantLabel(firstParticipant) : "";
+    const secondLabel = secondParticipant ? participantLabel(secondParticipant) : "";
+    return firstLabel.localeCompare(secondLabel, "it", { sensitivity: "base" });
+  }
+  return first[key] - second[key];
+}
+
+function SortableHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  align = "center",
+  className,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: { key: SortKey; direction: SortDirection };
+  onSort: (key: SortKey) => void;
+  align?: "left" | "center";
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  const SortIcon = active
+    ? sort.direction === "asc"
+      ? ArrowUp
+      : ArrowDown
+    : ChevronsUpDown;
+
+  return (
+    <th
+      className={cn("py-1 font-medium", className ?? "px-2")}
+      scope="col"
+      aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : undefined}
+    >
+      <button
+        type="button"
+        className={cn(
+          "flex min-h-10 w-full items-center gap-1 rounded-lg transition hover:bg-white/[.045] hover:text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-300/40",
+          align === "left" ? "justify-start" : "justify-center",
+          active && "text-lime-200",
+        )}
+        onClick={() => onSort(sortKey)}
+        title={`Ordina per ${label}`}
+      >
+        <span>{label}</span>
+        <SortIcon className={cn("size-3", active ? "opacity-90" : "opacity-35")} aria-hidden="true" />
+      </button>
+    </th>
   );
 }
 
