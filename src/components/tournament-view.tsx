@@ -17,6 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import type { MatchScoreUpdate, Participant, Tournament } from "@/domain/types";
+import { participantLabel } from "@/domain/participant-label";
 import {
   calculateStandings,
   getChampionId,
@@ -243,7 +244,14 @@ function Overview({
             </span>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[.18em] text-lime-200/65">Campione del torneo</p>
-              <h2 className="mt-1 text-3xl font-medium tracking-tight text-white">{champion.name}</h2>
+              <h2 className="mt-1 text-3xl font-medium tracking-tight text-white">
+                {champion.name}
+              </h2>
+              {champion.teamName ? (
+                <p className="mt-1 text-sm font-medium text-lime-100/65">
+                  {champion.teamName}
+                </p>
+              ) : null}
               <p className="mt-1 text-sm text-white/45">Torneo completato. Il titolo è ufficiale.</p>
             </div>
           </div>
@@ -256,7 +264,7 @@ function Overview({
         <StatCard
           icon={Trophy}
           label={tournament.format === "knockout" ? "Formato" : "In testa"}
-          value={tournament.format === "knockout" ? "KO" : leader?.name ?? "—"}
+          value={tournament.format === "knockout" ? "KO" : leader ? participantLabel(leader) : "—"}
           note={tournament.format === "hybrid" ? "Primo del Girone A" : FORMAT_LABELS[tournament.format]}
         />
         <StatCard icon={ShieldCheck} label="Salvataggio" value={isSynced ? "Cloud" : "Locale"} note={isSynced ? "Supabase + cache offline" : "Solo su questo dispositivo"} />
@@ -438,7 +446,7 @@ function DetailsSection({ tournament, onDelete, canDelete, isSynced, roleLabel }
             {tournament.participants.map((participant) => (
               <span key={participant.id} className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-white/[.035] py-1.5 pl-1.5 pr-3 text-xs text-white/65">
                 <PlayerMark name={participant.name} accent={participant.accent} size="sm" />
-                {participant.name}
+                {participantLabel(participant)}
               </span>
             ))}
           </div>

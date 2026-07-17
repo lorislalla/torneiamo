@@ -2,6 +2,7 @@
 
 import { Check, Clock3, CornerDownRight } from "lucide-react";
 import type { Match, MatchScoreUpdate, Participant } from "@/domain/types";
+import { participantLabel } from "@/domain/participant-label";
 import { getMatchWinner, isMatchPlayed } from "@/domain/tournament-engine";
 import { cn } from "@/lib/cn";
 import { PlayerMark } from "./ui";
@@ -153,7 +154,7 @@ export function MatchCard({
                       })
                     }
                   >
-                    {participant.name}
+                    {participantLabel(participant)}
                   </button>
                 ))}
               </div>
@@ -213,8 +214,11 @@ function PlayerScoreRow({
   return (
     <div className="flex items-center gap-3">
       <PlayerMark name={participant.name} accent={participant.accent} size="sm" />
-      <span className={cn("min-w-0 flex-1 truncate text-sm", isWinner ? "font-semibold text-white" : "text-white/72")}>
-        {participant.name}
+      <span className="min-w-0 flex-1">
+        <span className={cn("block truncate text-sm", isWinner ? "font-semibold text-white" : "text-white/72")}>
+          {participant.name}
+        </span>
+        {participant.teamName ? <span className="mt-0.5 block truncate text-[10px] uppercase tracking-[.1em] text-white/32">{participant.teamName}</span> : null}
       </span>
       {isWinner ? <Check className="size-3.5 text-lime-300" /> : null}
       <input
@@ -222,7 +226,7 @@ function PlayerScoreRow({
         disabled={readOnly}
         min={0}
         inputMode="numeric"
-        aria-label={`Gol ${participant.name}`}
+        aria-label={`Gol ${participantLabel(participant)}`}
         className="size-10 rounded-lg border border-white/10 bg-black/25 text-center font-mono text-base font-semibold text-white outline-none transition focus:border-lime-300/55 focus:ring-2 focus:ring-lime-300/10"
         value={score ?? ""}
         onChange={(event) => onChange(event.target.value)}
@@ -239,7 +243,10 @@ function PlaceholderPlayer({ participant }: { participant: Participant | null })
   return (
     <div className="flex items-center gap-3 rounded-xl border border-lime-300/10 bg-lime-300/[.035] px-3 py-3">
       <PlayerMark name={participant.name} accent={participant.accent} size="sm" />
-      <span className="text-sm font-medium text-white">{participant.name}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium text-white">{participant.name}</span>
+        {participant.teamName ? <span className="mt-0.5 block truncate text-[10px] uppercase tracking-[.1em] text-white/35">{participant.teamName}</span> : null}
+      </span>
     </div>
   );
 }

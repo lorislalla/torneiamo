@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { GitBranch, ListOrdered, Sparkles, Trophy } from "lucide-react";
+import { useRef, useState } from "react";
+import { GitBranch, ListOrdered, Plus, Sparkles, Trash2, Trophy } from "lucide-react";
 import type { Tournament, TournamentFormat } from "@/domain/types";
 import { createTournament } from "@/domain/tournament-engine";
 import { cn } from "@/lib/cn";
@@ -33,6 +33,19 @@ const FORMATS: Array<{
   },
 ];
 
+type ParticipantDraft = {
+  id: number;
+  name: string;
+  teamName: string;
+};
+
+function initialParticipants(): ParticipantDraft[] {
+  return [
+    { id: 0, name: "", teamName: "" },
+    { id: 1, name: "", teamName: "" },
+  ];
+}
+
 export function CreateTournamentDialog({
   open,
   onClose,
@@ -44,7 +57,8 @@ export function CreateTournamentDialog({
 }) {
   const [name, setName] = useState("");
   const [format, setFormat] = useState<TournamentFormat>("league");
-  const [names, setNames] = useState("");
+  const [participantRows, setParticipantRows] = useState(initialParticipants);
+  const nextParticipantId = useRef(2);
   const [leagueLegs, setLeagueLegs] = useState<1 | 2>(1);
   const [knockoutLegs, setKnockoutLegs] = useState<1 | 2>(1);
   const [groupCount, setGroupCount] = useState(2);
@@ -52,14 +66,48 @@ export function CreateTournamentDialog({
   const [shuffle, setShuffle] = useState(true);
   const [error, setError] = useState("");
 
-  const participants = useMemo(
-    () =>
-      names
-        .split(/[\n,]/)
-        .map((value) => value.trim())
-        .filter(Boolean),
-    [names],
-  );
+  const participants = participantRows
+    .filter((participant) => participant.name.trim())
+    .map((participant) => ({
+      name: participant.name.trim(),
+      ...(participant.teamName.trim()
+        ? { teamName: participant.teamName.trim() }
+        : {}),
+    }));
+
+  function updateParticipant(
+    id: number,
+    field: "name" | "teamName",
+    value: string,
+  ) {
+    setParticipantRows((current) =>
+      current.map((participant) =>
+        participant.id === id ? { ...participant, [field]: value } : participant,
+      ),
+    );
+  }
+
+  function addParticipant() {
+    if (participantRows.length >= 16) return;
+    const id = nextParticipantId.current;
+    nextParticipantId.current += 1;
+    setParticipantRows((current) => [
+      ...current,
+      { id, name: "", teamName: "" },
+    ]);
+  }
+
+  function removeParticipant(id: number) {
+    setParticipantRows((current) =>
+      current.length <= 2
+        ? current.map((participant) =>
+            participant.id === id
+              ? { ...participant, name: "", teamName: "" }
+              : participant,
+          )
+        : current.filter((participant) => participant.id !== id),
+    );
+  }
 
   function resetAndClose() {
     setError("");
@@ -69,7 +117,9 @@ export function CreateTournamentDialog({
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const uniqueParticipants = new Set(
-      participants.map((participant) => participant.toLocaleLowerCase("it")),
+      participants.map((participant) =>
+        `${participant.name}\u0000${participant.teamName ?? ""}`.toLocaleLowerCase("it"),
+      ),
     );
     if (name.trim().length < 3) {
       setError("Dai al torneo un nome di almeno 3 caratteri.");
@@ -80,7 +130,11 @@ export function CreateTournamentDialog({
       return;
     }
     if (uniqueParticipants.size !== participants.length) {
-      setError("Ogni partecipante deve avere un nome diverso.");
+      setError("Ogni combinazione persona e squadra deve essere diversa.");
+      return;
+    }
+    if (participantRows.some((participant) => !participant.name.trim() && participant.teamName.trim())) {
+      setError("Inserisci il nome della persona per ogni squadra indicata.");
       return;
     }
     if (format === "hybrid" && participants.length < groupCount * 2) {
@@ -92,7 +146,7 @@ export function CreateTournamentDialog({
       createTournament({
         name,
         format,
-        participantNames: participants,
+        participants,
         settings: {
           leagueLegs,
           knockoutLegs,
@@ -103,7 +157,8 @@ export function CreateTournamentDialog({
       }),
     );
     setName("");
-    setNames("");
+    setParticipantRows(initialParticipants());
+    nextParticipantId.current = 2;
     setError("");
   }
 
@@ -156,21 +211,65 @@ export function CreateTournamentDialog({
           </div>
         </fieldset>
 
-        <label className="block">
+        <fieldset>
           <div className="mb-2 flex items-end justify-between gap-4">
             <FieldLabel>Partecipanti</FieldLabel>
-            <span className={cn("mb-2 font-mono text-xs", participants.length > 16 ? "text-red-300" : "text-white/35")}>
+            <span className="mb-2 font-mono text-xs text-white/35">
               {participants.length}/16
             </span>
           </div>
-          <textarea
-            className="min-h-32 w-full resize-y rounded-xl border border-white/10 bg-white/[.055] px-4 py-3 text-white outline-none transition placeholder:text-white/25 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
-            value={names}
-            onChange={(event) => setNames(event.target.value)}
-            placeholder={"Un nome per riga\nLoris\nSimo\nDaniele\nMauri"}
-          />
-          <span className="mt-2 block text-xs text-white/35">Un nome per riga oppure separati da virgola.</span>
-        </label>
+          <div className="overflow-hidden rounded-2xl border border-white/8 bg-black/15">
+            <div className="hidden grid-cols-[2rem_1fr_1fr_2.5rem] gap-2 border-b border-white/8 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[.13em] text-white/30 sm:grid">
+              <span>#</span>
+              <span>Persona</span>
+              <span>Squadra (facoltativa)</span>
+              <span />
+            </div>
+            <div className="divide-y divide-white/[.055]">
+              {participantRows.map((participant, index) => (
+                <div key={participant.id} className="grid grid-cols-[2rem_1fr_2.5rem] gap-2 p-3 sm:grid-cols-[2rem_1fr_1fr_2.5rem]">
+                  <span className="grid h-11 place-items-center font-mono text-xs text-white/25">{index + 1}</span>
+                  <label className="min-w-0">
+                    <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">Persona</span>
+                    <input
+                      className="h-11 w-full rounded-xl border border-white/10 bg-white/[.055] px-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
+                      value={participant.name}
+                      onChange={(event) => updateParticipant(participant.id, "name", event.target.value)}
+                      placeholder="Es. Loris"
+                      aria-label={`Nome partecipante ${index + 1}`}
+                    />
+                  </label>
+                  <label className="col-start-2 min-w-0 sm:col-start-auto">
+                    <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">Squadra (facoltativa)</span>
+                    <input
+                      className="h-11 w-full rounded-xl border border-white/10 bg-white/[.055] px-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
+                      value={participant.teamName}
+                      onChange={(event) => updateParticipant(participant.id, "teamName", event.target.value)}
+                      placeholder="Es. Lazio"
+                      aria-label={`Squadra partecipante ${index + 1}, facoltativa`}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="self-end text-white/30 hover:text-red-200"
+                    onClick={() => removeParticipant(participant.id)}
+                    aria-label={`Rimuovi partecipante ${index + 1}`}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-4">
+            <p className="text-xs leading-5 text-white/35">La squadra è utile per videogiochi o sport di squadra; lasciala vuota per calcio balilla e tornei individuali.</p>
+            <Button type="button" variant="secondary" size="sm" onClick={addParticipant} disabled={participantRows.length >= 16}>
+              <Plus className="size-4" /> Aggiungi
+            </Button>
+          </div>
+        </fieldset>
 
         <div className="grid gap-4 rounded-2xl border border-white/8 bg-black/15 p-4 sm:grid-cols-2">
           {(format === "league" || format === "hybrid") && (
@@ -259,4 +358,3 @@ export function CreateTournamentDialog({
     </Modal>
   );
 }
-

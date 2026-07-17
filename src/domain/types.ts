@@ -7,6 +7,7 @@ export type MatchPhase = "league" | "group" | "knockout";
 export interface Participant {
   id: string;
   name: string;
+  teamName?: string;
   accent: string;
 }
 

@@ -47,13 +47,16 @@ function shuffle<T>(items: T[]) {
 export function createTournament(input: {
   name: string;
   format: TournamentFormat;
-  participantNames: string[];
+  participants: Array<{ name: string; teamName?: string }>;
   settings?: Partial<TournamentSettings>;
 }): Tournament {
   const now = new Date().toISOString();
-  const participants = input.participantNames.map((name, index) => ({
+  const participants = input.participants.map((participant, index) => ({
     id: createId("player"),
-    name: name.trim(),
+    name: participant.name.trim(),
+    ...(participant.teamName?.trim()
+      ? { teamName: participant.teamName.trim() }
+      : {}),
     accent: PARTICIPANT_ACCENTS[index % PARTICIPANT_ACCENTS.length],
   }));
   const settings = { ...DEFAULT_SETTINGS, ...input.settings };

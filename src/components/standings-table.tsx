@@ -27,7 +27,7 @@ export function StandingsTable({
           <thead>
             <tr className="border-b border-white/8 text-left text-[11px] uppercase tracking-[0.12em] text-white/35">
               <th className="w-12 px-4 py-3 text-center">#</th>
-              <th className="px-2 py-3 font-medium">Partecipante</th>
+              <th className="px-2 py-3 font-medium">Persona / squadra</th>
               <th className="px-2 py-3 text-center font-medium">G</th>
               <th className="px-2 py-3 text-center font-medium">V</th>
               <th className="px-2 py-3 text-center font-medium">N</th>
@@ -55,7 +55,16 @@ export function StandingsTable({
                   <td className="px-2 py-3">
                     <div className="flex items-center gap-3">
                       <PlayerMark name={participant.name} accent={participant.accent} size="sm" />
-                      <span className="font-medium text-white">{participant.name}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium text-white">
+                          {participant.name}
+                        </span>
+                        {participant.teamName ? (
+                          <span className="block truncate text-[11px] text-white/35">
+                            {participant.teamName}
+                          </span>
+                        ) : null}
+                      </span>
                     </div>
                   </td>
                   <Cell>{row.played}</Cell>
@@ -91,4 +100,3 @@ export function StandingsTable({
 function Cell({ children }: { children: React.ReactNode }) {
   return <td className="px-2 py-3 text-center font-mono text-xs text-white/55">{children}</td>;
 }
-
