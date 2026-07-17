@@ -3,18 +3,21 @@
 import { useMemo, useState } from "react";
 import {
   CalendarDays,
+  Check,
   CheckCircle2,
   CircleDot,
   Download,
   Gauge,
   GitBranch,
   ListOrdered,
+  Pencil,
   Settings2,
   Share2,
   ShieldCheck,
   Trash2,
   Trophy,
   Users,
+  X,
 } from "lucide-react";
 import type { MatchScoreUpdate, Participant, Tournament } from "@/domain/types";
 import { participantLabel } from "@/domain/participant-label";
@@ -33,6 +36,12 @@ import { StandingsTable } from "./standings-table";
 import { Button, PlayerMark } from "./ui";
 
 type TabId = "overview" | "matches" | "standings" | "bracket" | "settings";
+
+type ParticipantDraft = {
+  id: string;
+  name: string;
+  teamName: string;
+};
 
 const FORMAT_LABELS = {
   league: "Campionato",
@@ -194,7 +203,15 @@ export function TournamentView({
         />
       ) : null}
       {activeTab === "settings" ? (
-        <DetailsSection tournament={tournament} onDelete={onDelete} canDelete={canDelete} isSynced={isSynced} roleLabel={roleLabel} />
+        <DetailsSection
+          tournament={tournament}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          isSynced={isSynced}
+          roleLabel={roleLabel}
+        />
       ) : null}
     </div>
   );
@@ -418,7 +435,88 @@ function StandingsSection({ tournament }: { tournament: Tournament }) {
   return <StandingsTable participants={tournament.participants} matches={tournament.matches} />;
 }
 
-function DetailsSection({ tournament, onDelete, canDelete, isSynced, roleLabel }: { tournament: Tournament; onDelete: () => void; canDelete: boolean; isSynced: boolean; roleLabel?: string }) {
+function DetailsSection({
+  tournament,
+  onUpdate,
+  onDelete,
+  canEdit,
+  canDelete,
+  isSynced,
+  roleLabel,
+}: {
+  tournament: Tournament;
+  onUpdate: (tournament: Tournament) => void;
+  onDelete: () => void;
+  canEdit: boolean;
+  canDelete: boolean;
+  isSynced: boolean;
+  roleLabel?: string;
+}) {
+  const [editingParticipants, setEditingParticipants] = useState(false);
+  const [participantDrafts, setParticipantDrafts] = useState<ParticipantDraft[]>(() =>
+    createParticipantDrafts(tournament.participants),
+  );
+  const [participantError, setParticipantError] = useState("");
+
+  function startEditingParticipants() {
+    setParticipantDrafts(createParticipantDrafts(tournament.participants));
+    setParticipantError("");
+    setEditingParticipants(true);
+  }
+
+  function cancelEditingParticipants() {
+    setParticipantError("");
+    setEditingParticipants(false);
+  }
+
+  function updateParticipantDraft(
+    id: string,
+    field: "name" | "teamName",
+    value: string,
+  ) {
+    setParticipantDrafts((current) =>
+      current.map((participant) =>
+        participant.id === id ? { ...participant, [field]: value } : participant,
+      ),
+    );
+  }
+
+  function saveParticipants() {
+    if (participantDrafts.some((participant) => !participant.name.trim())) {
+      setParticipantError("Il nome della persona è obbligatorio per tutti i partecipanti.");
+      return;
+    }
+
+    const uniqueParticipants = new Set(
+      participantDrafts.map((participant) =>
+        `${participant.name.trim()}\u0000${participant.teamName.trim()}`.toLocaleLowerCase("it"),
+      ),
+    );
+    if (uniqueParticipants.size !== participantDrafts.length) {
+      setParticipantError("Ogni combinazione persona e squadra deve essere diversa.");
+      return;
+    }
+
+    const draftById = new Map(
+      participantDrafts.map((participant) => [participant.id, participant]),
+    );
+    onUpdate({
+      ...tournament,
+      participants: tournament.participants.map((participant) => {
+        const draft = draftById.get(participant.id);
+        if (!draft) return participant;
+        return {
+          ...participant,
+          name: draft.name.trim(),
+          teamName: draft.teamName.trim() || undefined,
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    });
+    setParticipantError("");
+    setEditingParticipants(false);
+  }
+
   function downloadBackup() {
     const blob = new Blob([JSON.stringify(tournament, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -441,15 +539,82 @@ function DetailsSection({ tournament, onDelete, canDelete, isSynced, roleLabel }
           <Detail label="Spareggi classifica" value="Scontri diretti → DR → GF" />
         </div>
         <div className="mt-7">
-          <h3 className="text-sm font-medium text-white">Partecipanti</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {tournament.participants.map((participant) => (
-              <span key={participant.id} className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-white/[.035] py-1.5 pl-1.5 pr-3 text-xs text-white/65">
-                <PlayerMark name={participant.name} accent={participant.accent} size="sm" />
-                {participantLabel(participant)}
-              </span>
-            ))}
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-sm font-medium text-white">Partecipanti</h3>
+            {canEdit && !editingParticipants ? (
+              <Button type="button" variant="ghost" size="sm" onClick={startEditingParticipants}>
+                <Pencil className="size-3.5" /> Modifica
+              </Button>
+            ) : null}
           </div>
+          {editingParticipants ? (
+            <div className="mt-3">
+              <div className="overflow-hidden rounded-2xl border border-white/8 bg-black/15">
+                <div className="hidden grid-cols-[2rem_1fr_1fr] gap-2 border-b border-white/8 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[.13em] text-white/30 sm:grid">
+                  <span>#</span>
+                  <span>Persona</span>
+                  <span>Squadra (facoltativa)</span>
+                </div>
+                <div className="divide-y divide-white/[.055]">
+                  {participantDrafts.map((participant, index) => (
+                    <div key={participant.id} className="grid grid-cols-[2rem_1fr] gap-2 p-3 sm:grid-cols-[2rem_1fr_1fr]">
+                      <span className="grid h-11 place-items-center font-mono text-xs text-white/25">
+                        {index + 1}
+                      </span>
+                      <label className="min-w-0">
+                        <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">
+                          Persona
+                        </span>
+                        <input
+                          className="h-11 w-full rounded-xl border border-white/10 bg-white/[.055] px-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
+                          value={participant.name}
+                          onChange={(event) =>
+                            updateParticipantDraft(participant.id, "name", event.target.value)
+                          }
+                          aria-label={`Nome partecipante ${index + 1}`}
+                        />
+                      </label>
+                      <label className="col-start-2 min-w-0 sm:col-start-auto">
+                        <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">
+                          Squadra (facoltativa)
+                        </span>
+                        <input
+                          className="h-11 w-full rounded-xl border border-white/10 bg-white/[.055] px-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
+                          value={participant.teamName}
+                          onChange={(event) =>
+                            updateParticipantDraft(participant.id, "teamName", event.target.value)
+                          }
+                          aria-label={`Squadra partecipante ${index + 1}, facoltativa`}
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {participantError ? (
+                <p className="mt-3 rounded-xl border border-red-400/15 bg-red-400/[.06] px-3 py-2 text-xs text-red-200" role="alert">
+                  {participantError}
+                </p>
+              ) : null}
+              <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="ghost" size="sm" onClick={cancelEditingParticipants}>
+                  <X className="size-4" /> Annulla
+                </Button>
+                <Button type="button" size="sm" onClick={saveParticipants}>
+                  <Check className="size-4" /> Salva modifiche
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {tournament.participants.map((participant) => (
+                <span key={participant.id} className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-white/[.035] py-1.5 pl-1.5 pr-3 text-xs text-white/65">
+                  <PlayerMark name={participant.name} accent={participant.accent} size="sm" />
+                  {participantLabel(participant)}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </section>
       <aside className="space-y-4">
@@ -468,6 +633,14 @@ function DetailsSection({ tournament, onDelete, canDelete, isSynced, roleLabel }
       </aside>
     </div>
   );
+}
+
+function createParticipantDrafts(participants: Participant[]): ParticipantDraft[] {
+  return participants.map((participant) => ({
+    id: participant.id,
+    name: participant.name,
+    teamName: participant.teamName ?? "",
+  }));
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
