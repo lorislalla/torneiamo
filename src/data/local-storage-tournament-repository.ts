@@ -34,12 +34,23 @@ export class LocalStorageTournamentRepository
       JSON.stringify(tournaments.filter((item) => item.id !== tournamentId)),
     );
   }
+
+  async replace(tournaments: Tournament[]) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tournaments));
+  }
+
+  roleFor() {
+    return "owner" as const;
+  }
 }
 
-let repository: TournamentRepository | null = null;
+let repository: LocalStorageTournamentRepository | null = null;
 
-export function getTournamentRepository(): TournamentRepository {
+export function getLocalTournamentRepository(): LocalStorageTournamentRepository {
   if (!repository) repository = new LocalStorageTournamentRepository();
   return repository;
 }
 
+export function getTournamentRepository(): TournamentRepository {
+  return getLocalTournamentRepository();
+}

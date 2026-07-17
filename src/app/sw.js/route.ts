@@ -1,7 +1,10 @@
 export const dynamic = "force-dynamic";
 
 export function GET() {
-  const version = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";
+  const version =
+    process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ??
+    process.env.NEXT_PUBLIC_APP_VERSION ??
+    "0.1.0";
   const source = `
 const VERSION = ${JSON.stringify(version)};
 const CACHE_NAME = "torneiamo-" + VERSION;
@@ -44,4 +47,3 @@ self.addEventListener("fetch", (event) => {
     },
   });
 }
-

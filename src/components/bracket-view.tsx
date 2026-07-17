@@ -8,10 +8,12 @@ export function BracketView({
   matches,
   participants,
   onScore,
+  readOnly = false,
 }: {
   matches: Match[];
   participants: Participant[];
   onScore: (matchId: string, score: MatchScoreUpdate) => void;
+  readOnly?: boolean;
 }) {
   const knockoutMatches = matches.filter((match) => match.phase === "knockout");
   if (knockoutMatches.length === 0) {
@@ -49,6 +51,7 @@ export function BracketView({
                     match={match}
                     participants={participants}
                     compact
+                    readOnly={readOnly}
                     onChange={(score) => onScore(match.id, score)}
                   />
                 ))}
@@ -60,4 +63,3 @@ export function BracketView({
     </div>
   );
 }
-

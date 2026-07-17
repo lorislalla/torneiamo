@@ -10,6 +10,7 @@ import {
   GitBranch,
   ListOrdered,
   Settings2,
+  Share2,
   ShieldCheck,
   Trash2,
   Trophy,
@@ -42,10 +43,20 @@ export function TournamentView({
   tournament,
   onUpdate,
   onDelete,
+  canEdit = true,
+  canDelete = true,
+  isSynced = false,
+  roleLabel,
+  onManageAccess,
 }: {
   tournament: Tournament;
   onUpdate: (tournament: Tournament) => void;
   onDelete: () => void;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  isSynced?: boolean;
+  roleLabel?: string;
+  onManageAccess?: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const progress = tournamentProgress(tournament);
@@ -113,16 +124,23 @@ export function TournamentView({
               {tournament.participants.length} partecipanti · {progress.played} di {progress.total} sfide decise · dati salvati su questo dispositivo
             </p>
           </div>
-          <div className="w-full max-w-md rounded-2xl border border-white/8 bg-white/[.025] p-4">
-            <div className="mb-2 flex items-center justify-between text-xs">
-              <span className="text-white/45">Avanzamento torneo</span>
-              <span className="font-mono font-semibold text-lime-200">{progress.percentage}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-white/8">
-              <div
-                className="h-full rounded-full bg-lime-300 transition-[width] duration-500"
-                style={{ width: `${progress.percentage}%` }}
-              />
+          <div className="flex w-full max-w-md flex-col gap-3">
+            {onManageAccess ? (
+              <Button variant="secondary" onClick={onManageAccess}>
+                <Share2 className="size-4" /> Persone e inviti
+              </Button>
+            ) : null}
+            <div className="rounded-2xl border border-white/8 bg-white/[.025] p-4">
+              <div className="mb-2 flex items-center justify-between text-xs">
+                <span className="text-white/45">Avanzamento torneo</span>
+                <span className="font-mono font-semibold text-lime-200">{progress.percentage}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-white/8">
+                <div
+                  className="h-full rounded-full bg-lime-300 transition-[width] duration-500"
+                  style={{ width: `${progress.percentage}%` }}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -156,10 +174,12 @@ export function TournamentView({
           nextMatches={nextMatches}
           onScore={updateScore}
           onNavigate={setActiveTab}
+          readOnly={!canEdit}
+          isSynced={isSynced}
         />
       ) : null}
       {activeTab === "matches" ? (
-        <MatchesSection tournament={tournament} onScore={updateScore} />
+        <MatchesSection tournament={tournament} onScore={updateScore} readOnly={!canEdit} />
       ) : null}
       {activeTab === "standings" ? (
         <StandingsSection tournament={tournament} />
@@ -169,10 +189,11 @@ export function TournamentView({
           matches={tournament.matches}
           participants={tournament.participants}
           onScore={updateScore}
+          readOnly={!canEdit}
         />
       ) : null}
       {activeTab === "settings" ? (
-        <DetailsSection tournament={tournament} onDelete={onDelete} />
+        <DetailsSection tournament={tournament} onDelete={onDelete} canDelete={canDelete} isSynced={isSynced} roleLabel={roleLabel} />
       ) : null}
     </div>
   );
@@ -184,12 +205,16 @@ function Overview({
   nextMatches,
   onScore,
   onNavigate,
+  readOnly,
+  isSynced,
 }: {
   tournament: Tournament;
   champion?: Participant;
   nextMatches: Tournament["matches"];
   onScore: (matchId: string, score: MatchScoreUpdate) => void;
   onNavigate: (tab: TabId) => void;
+  readOnly: boolean;
+  isSynced: boolean;
 }) {
   const progress = tournamentProgress(tournament);
   const leagueMatches = tournament.matches.filter((match) => match.phase !== "knockout");
@@ -234,7 +259,7 @@ function Overview({
           value={tournament.format === "knockout" ? "KO" : leader?.name ?? "—"}
           note={tournament.format === "hybrid" ? "Primo del Girone A" : FORMAT_LABELS[tournament.format]}
         />
-        <StatCard icon={ShieldCheck} label="Salvataggio" value="Locale" note="Pronto per Supabase" />
+        <StatCard icon={ShieldCheck} label="Salvataggio" value={isSynced ? "Cloud" : "Locale"} note={isSynced ? "Supabase + cache offline" : "Solo su questo dispositivo"} />
       </section>
 
       <section>
@@ -255,6 +280,7 @@ function Overview({
                 match={match}
                 participants={tournament.participants}
                 onChange={(score) => onScore(match.id, score)}
+                readOnly={readOnly}
               />
             ))}
           </div>
@@ -296,9 +322,11 @@ function StatCard({
 function MatchesSection({
   tournament,
   onScore,
+  readOnly,
 }: {
   tournament: Tournament;
   onScore: (matchId: string, score: MatchScoreUpdate) => void;
+  readOnly: boolean;
 }) {
   const [phase, setPhase] = useState<"all" | "group" | "knockout">("all");
   const visibleMatches = tournament.matches.filter(
@@ -348,7 +376,7 @@ function MatchesSection({
               </div>
               <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {roundMatches.map((match) => (
-                  <MatchCard key={match.id} match={match} participants={tournament.participants} onChange={(score) => onScore(match.id, score)} />
+                  <MatchCard key={match.id} match={match} participants={tournament.participants} onChange={(score) => onScore(match.id, score)} readOnly={readOnly} />
                 ))}
               </div>
             </div>
@@ -382,7 +410,7 @@ function StandingsSection({ tournament }: { tournament: Tournament }) {
   return <StandingsTable participants={tournament.participants} matches={tournament.matches} />;
 }
 
-function DetailsSection({ tournament, onDelete }: { tournament: Tournament; onDelete: () => void }) {
+function DetailsSection({ tournament, onDelete, canDelete, isSynced, roleLabel }: { tournament: Tournament; onDelete: () => void; canDelete: boolean; isSynced: boolean; roleLabel?: string }) {
   function downloadBackup() {
     const blob = new Blob([JSON.stringify(tournament, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -419,16 +447,16 @@ function DetailsSection({ tournament, onDelete }: { tournament: Tournament; onDe
       <aside className="space-y-4">
         <div className="rounded-3xl border border-white/8 bg-white/[.025] p-5">
           <Download className="size-5 text-lime-300" />
-          <h3 className="mt-4 font-medium text-white">Backup locale</h3>
-          <p className="mt-2 text-sm leading-6 text-white/40">Scarica una copia JSON dei dati del torneo prima di cambiare dispositivo.</p>
+          <h3 className="mt-4 font-medium text-white">{isSynced ? "Cloud + backup" : "Backup locale"}</h3>
+          <p className="mt-2 text-sm leading-6 text-white/40">{isSynced ? `Sincronizzato con Supabase${roleLabel ? ` · ${roleLabel}` : ""}. Puoi anche scaricare una copia JSON.` : "Scarica una copia JSON dei dati del torneo prima di cambiare dispositivo."}</p>
           <Button className="mt-4 w-full" variant="secondary" onClick={downloadBackup}><Download className="size-4" /> Esporta dati</Button>
         </div>
-        <div className="rounded-3xl border border-red-400/10 bg-red-400/[.035] p-5">
+        {canDelete ? <div className="rounded-3xl border border-red-400/10 bg-red-400/[.035] p-5">
           <Trash2 className="size-5 text-red-300" />
           <h3 className="mt-4 font-medium text-white">Elimina torneo</h3>
           <p className="mt-2 text-sm leading-6 text-white/40">Questa azione rimuove definitivamente i dati salvati sul dispositivo.</p>
           <Button className="mt-4 w-full" variant="danger" onClick={onDelete}><Trash2 className="size-4" /> Elimina</Button>
-        </div>
+        </div> : null}
       </aside>
     </div>
   );

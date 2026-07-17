@@ -11,11 +11,13 @@ export function MatchCard({
   participants,
   onChange,
   compact = false,
+  readOnly = false,
 }: {
   match: Match;
   participants: Participant[];
   onChange: (score: MatchScoreUpdate) => void;
   compact?: boolean;
+  readOnly?: boolean;
 }) {
   const participantById = new Map(
     participants.map((participant) => [participant.id, participant]),
@@ -92,6 +94,7 @@ export function MatchCard({
                 onFirst={(value) => update("homeScore", value)}
                 onSecond={(value) => update("awayScore", value)}
                 winnerId={winnerId}
+                readOnly={readOnly}
               />
               <div className="border-t border-dashed border-white/10" />
               <ScoreLeg
@@ -103,6 +106,7 @@ export function MatchCard({
                 onFirst={(value) => update("returnHomeScore", value)}
                 onSecond={(value) => update("returnAwayScore", value)}
                 winnerId={winnerId}
+                readOnly={readOnly}
               />
               {fullScoreComplete ? (
                 <div className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-xs">
@@ -120,6 +124,7 @@ export function MatchCard({
               onFirst={(value) => update("homeScore", value)}
               onSecond={(value) => update("awayScore", value)}
               winnerId={winnerId}
+              readOnly={readOnly}
             />
           )}
 
@@ -131,6 +136,7 @@ export function MatchCard({
                   <button
                     type="button"
                     key={participant.id}
+                    disabled={readOnly}
                     className={cn(
                       "rounded-lg border px-2 py-2 text-xs font-medium transition",
                       match.winnerOverrideId === participant.id
@@ -168,6 +174,7 @@ function ScoreLeg({
   onFirst,
   onSecond,
   winnerId,
+  readOnly,
 }: {
   label?: string;
   first: Participant;
@@ -177,13 +184,14 @@ function ScoreLeg({
   onFirst: (value: string) => void;
   onSecond: (value: string) => void;
   winnerId: string | null;
+  readOnly: boolean;
 }) {
   return (
     <div>
       {label ? <p className="mb-2 font-mono text-[10px] uppercase tracking-[.13em] text-white/30">{label}</p> : null}
       <div className="space-y-2">
-        <PlayerScoreRow participant={first} score={firstScore} onChange={onFirst} isWinner={winnerId === first.id} />
-        <PlayerScoreRow participant={second} score={secondScore} onChange={onSecond} isWinner={winnerId === second.id} />
+        <PlayerScoreRow participant={first} score={firstScore} onChange={onFirst} isWinner={winnerId === first.id} readOnly={readOnly} />
+        <PlayerScoreRow participant={second} score={secondScore} onChange={onSecond} isWinner={winnerId === second.id} readOnly={readOnly} />
       </div>
     </div>
   );
@@ -194,11 +202,13 @@ function PlayerScoreRow({
   score,
   onChange,
   isWinner,
+  readOnly,
 }: {
   participant: Participant;
   score: number | null;
   onChange: (value: string) => void;
   isWinner: boolean;
+  readOnly: boolean;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -209,6 +219,7 @@ function PlayerScoreRow({
       {isWinner ? <Check className="size-3.5 text-lime-300" /> : null}
       <input
         type="number"
+        disabled={readOnly}
         min={0}
         inputMode="numeric"
         aria-label={`Gol ${participant.name}`}
