@@ -56,31 +56,28 @@ export class SupabaseTournamentRepository implements TournamentRepository {
     );
     const remoteRows = [...rows];
     const remoteIds = new Set(rows.map((row) => row.id));
-    const importKey = `torneiamo:supabase-imported:${this.userId}`;
+    const pendingLocal: Tournament[] = [];
 
-    if (window.localStorage.getItem(importKey) !== "true") {
+    if (window.localStorage.getItem(this.importKey) !== "true") {
       let importSucceeded = true;
       for (const tournament of cached.filter((item) => !remoteIds.has(item.id))) {
-        const { data: imported, error: importError } = await this.supabase
-          .from("tournaments")
-          .insert(this.toInsert(tournament))
-          .select()
-          .single();
-
-        if (importError) {
+        try {
+          const imported = await this.insert(tournament);
+          remoteRows.push(imported);
+          remoteIds.add(imported.id);
+          roleByTournament.set(imported.id, "owner");
+        } catch {
           importSucceeded = false;
-          continue;
+          pendingLocal.push(tournament);
         }
-
-        remoteRows.push(imported);
-        remoteIds.add(imported.id);
-        roleByTournament.set(imported.id, "owner");
       }
-      if (importSucceeded) window.localStorage.setItem(importKey, "true");
+      if (importSucceeded) window.localStorage.setItem(this.importKey, "true");
     }
 
-    const tournaments = remoteRows
-      .map((row) => this.remember(row, roleByTournament.get(row.id)))
+    const tournaments = [
+      ...remoteRows.map((row) => this.remember(row, roleByTournament.get(row.id))),
+      ...pendingLocal,
+    ]
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
     await this.local.replace(tournaments);
@@ -92,13 +89,13 @@ export class SupabaseTournamentRepository implements TournamentRepository {
     const meta = this.remote.get(tournament.id);
 
     if (!meta) {
-      const { data, error } = await this.supabase
-        .from("tournaments")
-        .insert(this.toInsert(tournament))
-        .select()
-        .single();
-      if (error) throw error;
-      this.remember(data, "owner");
+      try {
+        const data = await this.insert(tournament);
+        this.remember(data, "owner");
+      } catch (error) {
+        window.localStorage.removeItem(this.importKey);
+        throw error;
+      }
       return;
     }
 
@@ -190,6 +187,25 @@ export class SupabaseTournamentRepository implements TournamentRepository {
       role: role ?? (row.owner_id === this.userId ? "owner" : "viewer"),
     });
     return normalizeTournament(row.data as unknown as Tournament);
+  }
+
+  private get importKey() {
+    return `torneiamo:supabase-imported:${this.userId}`;
+  }
+
+  private async insert(tournament: Tournament): Promise<TournamentRow> {
+    const { error: insertError } = await this.supabase
+      .from("tournaments")
+      .insert(this.toInsert(tournament));
+    if (insertError) throw insertError;
+
+    const { data, error } = await this.supabase
+      .from("tournaments")
+      .select("*")
+      .eq("id", tournament.id)
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   private toInsert(tournament: Tournament) {

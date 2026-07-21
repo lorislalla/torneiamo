@@ -9,6 +9,13 @@ export function GET() {
 const VERSION = ${JSON.stringify(version)};
 const CACHE_NAME = "torneiamo-" + VERSION;
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/maskable-icon.svg"];
+const cacheResponse = async (request, response) => {
+  const copy = response.clone();
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(request, copy);
+  } catch {}
+};
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => Promise.allSettled(APP_SHELL.map((url) => cache.add(url)))));
 });
@@ -24,15 +31,15 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname === "/sw.js") return;
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).then((response) => {
-      if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+    event.respondWith(fetch(request).then(async (response) => {
+      if (response.ok) await cacheResponse(request, response);
       return response;
     }).catch(async () => (await caches.match(request)) || (await caches.match("/")) || new Response("Torneiamo non è disponibile offline per questa pagina.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } })));
     return;
   }
   if (url.pathname.startsWith("/_next/static/") || url.pathname.endsWith(".svg")) {
-    event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-      if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+    event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then(async (response) => {
+      if (response.ok) await cacheResponse(request, response);
       return response;
     })));
   }

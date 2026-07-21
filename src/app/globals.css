@@ -43,6 +43,18 @@ select {
   color: white;
 }
 
+/* Keep secondary copy readable on small, high-density and OLED displays. */
+.text-white\/20 { color: rgb(255 255 255 / 40%); }
+.text-white\/25 { color: rgb(255 255 255 / 50%); }
+.text-white\/30 { color: rgb(255 255 255 / 55%); }
+.text-white\/32 { color: rgb(255 255 255 / 57%); }
+.text-white\/35 { color: rgb(255 255 255 / 60%); }
+.text-white\/38 { color: rgb(255 255 255 / 63%); }
+.text-white\/40 { color: rgb(255 255 255 / 65%); }
+.text-white\/45 { color: rgb(255 255 255 / 70%); }
+.text-white\/48 { color: rgb(255 255 255 / 73%); }
+.text-white\/50 { color: rgb(255 255 255 / 75%); }
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
