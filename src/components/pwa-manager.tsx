@@ -9,8 +9,49 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-export function PwaManager() {
+export function usePwaInstallation() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    const onBeforeInstall = (event: Event) => {
+      const navigatorWithStandalone = navigator as Navigator & {
+        standalone?: boolean;
+      };
+      if (
+        window.matchMedia("(display-mode: standalone)").matches ||
+        navigatorWithStandalone.standalone === true
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => setInstallPrompt(null);
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  async function install() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+  }
+
+  return { installable: installPrompt !== null, install };
+}
+
+export function PwaManager({
+  installable,
+  onInstall,
+}: {
+  installable: boolean;
+  onInstall: () => Promise<void>;
+}) {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [dismissedUpdate, setDismissedUpdate] = useState(false);
   const reloading = useRef(false);
@@ -56,27 +97,6 @@ export function PwaManager() {
     };
   }, []);
 
-  useEffect(() => {
-    const onBeforeInstall = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as BeforeInstallPromptEvent);
-    };
-    const onInstalled = () => setInstallPrompt(null);
-    window.addEventListener("beforeinstallprompt", onBeforeInstall);
-    window.addEventListener("appinstalled", onInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
-  }, []);
-
-  async function install() {
-    if (!installPrompt) return;
-    await installPrompt.prompt();
-    await installPrompt.userChoice;
-    setInstallPrompt(null);
-  }
-
   return (
     <div className="fixed inset-x-3 bottom-3 z-40 flex flex-col items-end gap-2 sm:inset-x-auto sm:right-4 sm:max-w-sm">
       {waitingWorker && !dismissedUpdate ? (
@@ -94,8 +114,8 @@ export function PwaManager() {
           </Button>
         </div>
       ) : null}
-      {installPrompt ? (
-        <Button variant="secondary" onClick={install} className="border-lime-300/15 bg-[#13241b] shadow-xl">
+      {installable ? (
+        <Button variant="secondary" onClick={() => void onInstall()} className="border-lime-300/15 bg-[#13241b] shadow-xl">
           <Download className="size-4 text-lime-300" /> Installa app
         </Button>
       ) : null}
@@ -105,4 +125,3 @@ export function PwaManager() {
     </div>
   );
 }
-

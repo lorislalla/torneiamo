@@ -35,7 +35,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AuthDialog } from "./auth-dialog";
 import { CollaborationDialog } from "./collaboration-dialog";
 import { CreateTournamentDialog } from "./create-tournament-dialog";
-import { PwaManager } from "./pwa-manager";
+import { PwaManager, usePwaInstallation } from "./pwa-manager";
 import { TournamentView } from "./tournament-view";
 import { Button } from "./ui";
 
@@ -59,6 +59,7 @@ export function TournamentApp() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const { installable, install } = usePwaInstallation();
   const claimedInvite = useRef("");
 
   const repository = useMemo<TournamentRepository>(() => {
@@ -300,7 +301,11 @@ export function TournamentApp() {
               onManageAccess={user ? () => setCollaborationOpen(true) : undefined}
             />
           ) : (
-            <EmptyDashboard onCreate={() => setCreateOpen(true)} onSync={!user ? () => setAuthOpen(true) : undefined} />
+            <EmptyDashboard
+              onCreate={() => setCreateOpen(true)}
+              onSync={!user ? () => setAuthOpen(true) : undefined}
+              installable={installable}
+            />
           )}
         </main>
       </div>
@@ -322,7 +327,7 @@ export function TournamentApp() {
           {notice}
         </div>
       ) : null}
-      <PwaManager />
+      <PwaManager installable={installable} onInstall={install} />
     </div>
   );
 }
@@ -362,7 +367,15 @@ function Brand() {
   );
 }
 
-function EmptyDashboard({ onCreate, onSync }: { onCreate: () => void; onSync?: () => void }) {
+function EmptyDashboard({
+  onCreate,
+  onSync,
+  installable,
+}: {
+  onCreate: () => void;
+  onSync?: () => void;
+  installable: boolean;
+}) {
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-6xl flex-col justify-center px-5 py-14 sm:px-10 lg:min-h-dvh">
       <div className="max-w-3xl">
@@ -375,7 +388,11 @@ function EmptyDashboard({ onCreate, onSync }: { onCreate: () => void; onSync?: (
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button onClick={onCreate}><Plus className="size-4" /> Crea il primo torneo</Button>
           {onSync ? <Button variant="secondary" onClick={onSync}><Cloud className="size-4" /> Attiva sincronizzazione</Button> : null}
-          <span className="inline-flex items-center justify-center gap-2 px-3 text-xs text-white/30"><Smartphone className="size-4" /> Installabile sul telefono</span>
+          {installable ? (
+            <span className="inline-flex items-center justify-center gap-2 px-3 text-xs text-white/30">
+              <Smartphone className="size-4" /> Installabile sul telefono
+            </span>
+          ) : null}
         </div>
       </div>
 
