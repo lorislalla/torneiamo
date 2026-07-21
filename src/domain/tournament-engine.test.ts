@@ -87,7 +87,7 @@ function create(format: Tournament["format"], names: string[], settings = {}) {
 }
 
 describe("generazione del calendario all'italiana", () => {
-  for (const participantCount of Array.from({ length: 9 }, (_, index) => index + 2)) {
+  for (const participantCount of Array.from({ length: 15 }, (_, index) => index + 2)) {
     for (const legs of [1, 2] as const) {
       it(`genera tutte e sole le coppie con ${participantCount} partecipanti e ${legs} gir${legs === 1 ? "one" : "oni"}`, () => {
         const ids = Array.from(
