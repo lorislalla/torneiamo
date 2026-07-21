@@ -5,6 +5,7 @@ import type {
   ScoringRules,
   ScoreDirection,
   StandingRow,
+  TeamStandingRow,
   Tournament,
   TournamentFormat,
   TournamentGroup,
@@ -270,7 +271,9 @@ export function updateTournamentScoringRules(
 }
 
 export function normalizeTournament(tournament: Tournament): Tournament {
-  const storedTieBreakers = tournament.settings?.scoring?.tieBreakers ?? [];
+  const storedTieBreakers = [
+    ...new Set(tournament.settings?.scoring?.tieBreakers ?? []),
+  ];
   const tieBreakers = [
     ...storedTieBreakers,
     ...DEFAULT_SCORING_RULES.tieBreakers.filter(
@@ -834,14 +837,9 @@ export function tournamentProgress(tournament: Tournament) {
 export function getChampionId(tournament: Tournament) {
   if (!isTournamentComplete(tournament)) return null;
   if (tournament.format === "scoreboard") {
-    return [...tournament.participants].sort(
-      (first, second) =>
-        compareRankedScores(
-          first.score ?? 0,
-          second.score ?? 0,
-          tournament.settings.scoring.scoreDirection,
-        ) ||
-        first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
+    return rankScoreboardParticipants(
+      tournament.participants,
+      tournament.settings.scoring.scoreDirection,
     )[0]?.id ?? null;
   }
   if (tournament.format === "team-scoreboard") return null;
@@ -872,4 +870,46 @@ export function compareRankedScores(
   direction: ScoreDirection,
 ) {
   return direction === "higher" ? second - first : first - second;
+}
+
+export function rankScoreboardParticipants(
+  participants: Participant[],
+  direction: ScoreDirection,
+) {
+  return [...participants].sort(
+    (first, second) =>
+      compareRankedScores(first.score ?? 0, second.score ?? 0, direction) ||
+      first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
+  );
+}
+
+export function calculateTeamStandings(
+  participants: Participant[],
+  direction: ScoreDirection,
+): TeamStandingRow[] {
+  const teamMap = new Map<string, { name: string; participants: Participant[] }>();
+  for (const participant of participants) {
+    const teamName = participant.teamName?.trim() || "Senza squadra";
+    const teamKey = teamName.toLocaleLowerCase("it");
+    const current = teamMap.get(teamKey);
+    teamMap.set(teamKey, {
+      name: current?.name ?? teamName,
+      participants: [...(current?.participants ?? []), participant],
+    });
+  }
+
+  return Array.from(teamMap.values(), ({ name, participants: teamParticipants }) => ({
+    name,
+    participants: rankScoreboardParticipants(teamParticipants, direction),
+    total: teamParticipants.reduce(
+      (sum, participant) => sum + (participant.score ?? 0),
+      0,
+    ),
+  }))
+    .sort(
+      (first, second) =>
+        compareRankedScores(first.total, second.total, direction) ||
+        first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
+    )
+    .map((team, index) => ({ ...team, position: index + 1 }));
 }

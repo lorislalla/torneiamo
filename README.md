@@ -41,6 +41,16 @@ Controllo completo prima di una release:
 npm run check
 ```
 
+La suite matematica dell'engine viene eseguita anche da `npm run check` e blocca
+il controllo se scende sotto le soglie di copertura configurate. Per lanciarla
+separatamente:
+
+```bash
+npm test
+npm run test:coverage
+npm run test:watch
+```
+
 ## Database Supabase
 
 Lo schema versionato si trova in `supabase/migrations`. Include tabelle, indici, trigger, permessi espliciti e policy RLS per tornei, membri e inviti.

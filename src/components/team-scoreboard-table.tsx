@@ -2,15 +2,9 @@
 
 import { UsersRound } from "lucide-react";
 import type { Participant, ScoreDirection } from "@/domain/types";
-import { compareRankedScores } from "@/domain/tournament-engine";
+import { calculateTeamStandings } from "@/domain/tournament-engine";
 import { ScoreInput } from "./score-input";
 import { PlayerMark } from "./ui";
-
-type TeamRow = {
-  name: string;
-  total: number;
-  participants: Participant[];
-};
 
 export function TeamScoreboardTable({
   participants,
@@ -23,7 +17,7 @@ export function TeamScoreboardTable({
   onScore: (participantId: string, score: number) => void;
   readOnly?: boolean;
 }) {
-  const teams = buildTeams(participants, scoreDirection);
+  const teams = calculateTeamStandings(participants, scoreDirection);
 
   return (
     <div className="space-y-4">
@@ -72,30 +66,5 @@ export function TeamScoreboardTable({
         Il totale di ogni squadra o coppia è la somma dei punteggi individuali. Vince il totale {scoreDirection === "higher" ? "più alto" : "più basso"}.
       </p>
     </div>
-  );
-}
-
-function buildTeams(
-  participants: Participant[],
-  scoreDirection: ScoreDirection,
-): TeamRow[] {
-  const teamMap = new Map<string, Participant[]>();
-  for (const participant of participants) {
-    const teamName = participant.teamName?.trim() || "Senza squadra";
-    teamMap.set(teamName, [...(teamMap.get(teamName) ?? []), participant]);
-  }
-
-  return Array.from(teamMap, ([name, teamParticipants]) => ({
-    name,
-    participants: [...teamParticipants].sort(
-      (first, second) =>
-        compareRankedScores(first.score ?? 0, second.score ?? 0, scoreDirection) ||
-        first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
-    ),
-    total: teamParticipants.reduce((sum, participant) => sum + (participant.score ?? 0), 0),
-  })).sort(
-    (first, second) =>
-      compareRankedScores(first.total, second.total, scoreDirection) ||
-      first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
   );
 }

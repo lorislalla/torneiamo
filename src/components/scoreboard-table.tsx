@@ -2,7 +2,7 @@
 
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 import type { Participant, ScoreDirection } from "@/domain/types";
-import { compareRankedScores } from "@/domain/tournament-engine";
+import { rankScoreboardParticipants } from "@/domain/tournament-engine";
 import { ScoreInput } from "./score-input";
 import { PlayerMark } from "./ui";
 
@@ -17,10 +17,9 @@ export function ScoreboardTable({
   scoreDirection?: ScoreDirection;
   readOnly?: boolean;
 }) {
-  const sortedParticipants = [...participants].sort(
-    (first, second) =>
-      compareRankedScores(first.score ?? 0, second.score ?? 0, scoreDirection) ||
-      first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
+  const sortedParticipants = rankScoreboardParticipants(
+    participants,
+    scoreDirection,
   );
 
   return (

@@ -26,11 +26,12 @@ import type { MatchScoreUpdate, Participant, ScoringRules, Tournament } from "@/
 import { participantLabel } from "@/domain/participant-label";
 import {
   calculateStandings,
-  compareRankedScores,
+  calculateTeamStandings,
   getChampionId,
   getMatchWinner,
   isMatchPlayed,
   tournamentProgress,
+  rankScoreboardParticipants,
   setTournamentStatus,
   updateParticipantScore,
   updateMatchScore,
@@ -283,30 +284,13 @@ function Overview({
         tournament.settings.scoring,
       )
     : [];
-  const scoreboardLeader = [...tournament.participants].sort(
-    (first, second) =>
-      compareRankedScores(
-        first.score ?? 0,
-        second.score ?? 0,
-        tournament.settings.scoring.scoreDirection,
-      ) ||
-      first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
+  const scoreboardLeader = rankScoreboardParticipants(
+    tournament.participants,
+    tournament.settings.scoring.scoreDirection,
   )[0];
-  const teamTotals = new Map<string, number>();
-  tournament.participants.forEach((participant) => {
-    if (!participant.teamName) return;
-    teamTotals.set(
-      participant.teamName,
-      (teamTotals.get(participant.teamName) ?? 0) + (participant.score ?? 0),
-    );
-  });
-  const teamLeader = Array.from(teamTotals, ([name, total]) => ({ name, total })).sort(
-    (first, second) =>
-      compareRankedScores(
-        first.total,
-        second.total,
-        tournament.settings.scoring.scoreDirection,
-      ) || first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
+  const teamLeader = calculateTeamStandings(
+    tournament.participants,
+    tournament.settings.scoring.scoreDirection,
   )[0];
   const leader = tournament.format === "scoreboard"
     ? scoreboardLeader

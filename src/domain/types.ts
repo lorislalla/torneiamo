@@ -95,6 +95,13 @@ export interface StandingRow {
   position: number;
 }
 
+export interface TeamStandingRow {
+  name: string;
+  total: number;
+  participants: Participant[];
+  position: number;
+}
+
 export interface MatchScoreUpdate {
   homeScore: number | null;
   awayScore: number | null;
