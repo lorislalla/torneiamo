@@ -1,7 +1,7 @@
 "use client";
 
 import { LockKeyhole } from "lucide-react";
-import type { Match, MatchScoreUpdate, Participant } from "@/domain/types";
+import type { Match, MatchScoreUpdate, Participant, ScoreDirection } from "@/domain/types";
 import { MatchCard } from "./match-card";
 
 export function BracketView({
@@ -9,11 +9,13 @@ export function BracketView({
   participants,
   onScore,
   readOnly = false,
+  scoreDirection = "higher",
 }: {
   matches: Match[];
   participants: Participant[];
   onScore: (matchId: string, score: MatchScoreUpdate) => void;
   readOnly?: boolean;
+  scoreDirection?: ScoreDirection;
 }) {
   const knockoutMatches = matches.filter((match) => match.phase === "knockout");
   if (knockoutMatches.length === 0) {
@@ -52,6 +54,7 @@ export function BracketView({
                     participants={participants}
                     compact
                     readOnly={readOnly}
+                    scoreDirection={scoreDirection}
                     onChange={(score) => onScore(match.id, score)}
                   />
                 ))}

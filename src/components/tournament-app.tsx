@@ -5,6 +5,7 @@ import type { User } from "@supabase/supabase-js";
 import {
   ArrowRight,
   CalendarRange,
+  ChartNoAxesColumnIncreasing,
   Cloud,
   CloudOff,
   GitBranch,
@@ -15,9 +16,10 @@ import {
   Plus,
   RefreshCw,
   Smartphone,
-  Sparkles,
+  Swords,
   Trophy,
   Users,
+  UsersRound,
   X,
 } from "lucide-react";
 import type { Tournament } from "@/domain/types";
@@ -264,7 +266,7 @@ export function TournamentApp() {
                   onClick={() => { setActiveId(tournament.id); setMobileMenuOpen(false); }}
                 >
                   <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg", activeId === tournament.id ? "bg-lime-300 text-emerald-950" : "bg-white/[.055]")}>
-                    {tournament.format === "league" ? <CalendarRange className="size-4" /> : tournament.format === "knockout" ? <GitBranch className="size-4" /> : <Trophy className="size-4" />}
+                    {tournament.format === "league" ? <CalendarRange className="size-4" /> : tournament.format === "duel" ? <Swords className="size-4" /> : tournament.format === "scoreboard" ? <ChartNoAxesColumnIncreasing className="size-4" /> : tournament.format === "team-scoreboard" ? <UsersRound className="size-4" /> : tournament.format === "knockout" ? <GitBranch className="size-4" /> : <Trophy className="size-4" />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{tournament.name}</span>
@@ -364,11 +366,8 @@ function EmptyDashboard({ onCreate, onSync }: { onCreate: () => void; onSync?: (
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-6xl flex-col justify-center px-5 py-14 sm:px-10 lg:min-h-dvh">
       <div className="max-w-3xl">
-        <span className="inline-flex items-center gap-2 rounded-full border border-lime-300/15 bg-lime-300/[.06] px-3 py-1.5 text-xs text-lime-200">
-          <Sparkles className="size-3.5" /> Il foglio di calcolo, finalmente bello
-        </span>
-        <h1 className="mt-6 text-5xl font-medium leading-[.96] tracking-[-.055em] text-white sm:text-7xl">
-          Il torneo si gioca.<br /><span className="text-white/35">Al resto pensiamo noi.</span>
+        <h1 className="text-5xl font-medium leading-[.96] tracking-[-.055em] text-white sm:text-7xl">
+          I tuoi tornei.
         </h1>
         <p className="mt-6 max-w-xl text-base leading-7 text-white/45 sm:text-lg">
           Crea calendari, inserisci risultati e collabora in tempo reale su classifiche e tabelloni che si aggiornano da soli.
@@ -380,11 +379,14 @@ function EmptyDashboard({ onCreate, onSync }: { onCreate: () => void; onSync?: (
         </div>
       </div>
 
-      <div className="mt-14 grid gap-3 sm:grid-cols-3">
+      <div className="mt-14 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {[
-          { icon: CalendarRange, title: "Campionato", copy: "Sola andata o A/R, classifica e scontri diretti automatici." },
+          { icon: CalendarRange, title: "Campionato", copy: "Tutti contro tutti, con una o due sfide per coppia." },
+          { icon: Swords, title: "Campionato a 2", copy: "Due partecipanti, sfide libere finché vuoi." },
           { icon: GitBranch, title: "Eliminazione", copy: "Sorteggio, bye e tabellone che avanza con ogni risultato." },
-          { icon: Trophy, title: "Gironi + playoff", copy: "Qualificazioni configurabili e incroci finali senza formule." },
+          { icon: Trophy, title: "Gironi + playoff", copy: "Qualificazioni configurabili e incroci finali." },
+          { icon: ChartNoAxesColumnIncreasing, title: "Classifica libera", copy: "Punteggi personalizzabili per qualsiasi gioco." },
+          { icon: UsersRound, title: "Classifica a squadre", copy: "Punteggi individuali e totale condiviso." },
         ].map((item) => (
           <button key={item.title} type="button" onClick={onCreate} className="group rounded-2xl border border-white/8 bg-white/[.025] p-5 text-left transition hover:-translate-y-1 hover:border-lime-300/20 hover:bg-white/[.045]">
             <div className="flex items-center justify-between"><item.icon className="size-5 text-lime-300/75" /><ArrowRight className="size-4 text-white/20 transition group-hover:translate-x-1 group-hover:text-white/55" /></div>
@@ -402,7 +404,7 @@ function LoadingScreen() {
     <div className="grid min-h-dvh place-items-center bg-[#07110d] text-white">
       <div className="text-center">
         <span className="mx-auto grid size-12 animate-pulse place-items-center rounded-2xl bg-lime-300 text-emerald-950"><LayoutDashboard className="size-5" /></span>
-        <p className="mt-4 text-sm text-white/40">Prepariamo il campo…</p>
+        <p className="mt-4 text-sm text-white/40">Prepariamo tutto…</p>
       </div>
     </div>
   );

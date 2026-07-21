@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   CalendarDays,
+  ChartNoAxesColumnIncreasing,
   Check,
   CheckCircle2,
   CircleDot,
@@ -14,25 +15,34 @@ import {
   Settings2,
   Share2,
   ShieldCheck,
+  SquareCheckBig,
   Trash2,
   Trophy,
   Users,
+  UsersRound,
   X,
 } from "lucide-react";
-import type { MatchScoreUpdate, Participant, Tournament } from "@/domain/types";
+import type { MatchScoreUpdate, Participant, ScoringRules, Tournament } from "@/domain/types";
 import { participantLabel } from "@/domain/participant-label";
 import {
   calculateStandings,
+  compareRankedScores,
   getChampionId,
   getMatchWinner,
   isMatchPlayed,
   tournamentProgress,
+  setTournamentStatus,
+  updateParticipantScore,
   updateMatchScore,
+  updateTournamentScoringRules,
 } from "@/domain/tournament-engine";
 import { cn } from "@/lib/cn";
 import { BracketView } from "./bracket-view";
 import { MatchCard } from "./match-card";
+import { ScoreboardTable } from "./scoreboard-table";
+import { ScoringRulesFields, TIE_BREAKER_LABELS } from "./scoring-rules-fields";
 import { StandingsTable } from "./standings-table";
+import { TeamScoreboardTable } from "./team-scoreboard-table";
 import { Button, PlayerMark } from "./ui";
 
 type TabId = "overview" | "matches" | "standings" | "bracket" | "settings";
@@ -45,8 +55,11 @@ type ParticipantDraft = {
 
 const FORMAT_LABELS = {
   league: "Campionato",
+  duel: "Campionato a 2",
   knockout: "Eliminazione diretta",
   hybrid: "Gironi + playoff",
+  scoreboard: "Classifica libera",
+  "team-scoreboard": "Classifica a squadre",
 };
 
 export function TournamentView({
@@ -82,14 +95,19 @@ export function TournamentView({
         match.homeId &&
         match.awayId &&
         (match.phase === "knockout"
-          ? !getMatchWinner(match, match.twoLegs)
+          ? !getMatchWinner(
+              match,
+              match.twoLegs,
+              tournament.settings.scoring.scoreDirection,
+            )
           : !isMatchPlayed(match)),
     )
     .slice(0, 3);
+  const openEnded = tournament.format === "duel" || tournament.format === "scoreboard" || tournament.format === "team-scoreboard";
 
   const tabs: Array<{ id: TabId; label: string; icon: typeof Gauge; hidden?: boolean }> = [
     { id: "overview", label: "Panoramica", icon: Gauge },
-    { id: "matches", label: "Partite", icon: CalendarDays },
+    { id: "matches", label: "Sfide", icon: CalendarDays, hidden: tournament.format === "scoreboard" || tournament.format === "team-scoreboard" },
     {
       id: "standings",
       label: tournament.format === "hybrid" ? "Gironi" : "Classifica",
@@ -100,13 +118,17 @@ export function TournamentView({
       id: "bracket",
       label: "Tabellone",
       icon: GitBranch,
-      hidden: tournament.format === "league",
+      hidden: tournament.format !== "knockout" && tournament.format !== "hybrid",
     },
     { id: "settings", label: "Dettagli", icon: Settings2 },
   ];
 
   function updateScore(matchId: string, score: MatchScoreUpdate) {
     onUpdate(updateMatchScore(tournament, matchId, score));
+  }
+
+  function updateScoreboard(participantId: string, score: number) {
+    onUpdate(updateParticipantScore(tournament, participantId, score));
   }
 
   return (
@@ -131,7 +153,13 @@ export function TournamentView({
               {tournament.name}
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/45">
-              {tournament.participants.length} partecipanti · {progress.played} di {progress.total} sfide decise · dati salvati su questo dispositivo
+              {tournament.participants.length} partecipanti · {tournament.format === "scoreboard"
+                ? "punteggi liberi"
+                : tournament.format === "team-scoreboard"
+                  ? "totali condivisi"
+                : tournament.format === "duel"
+                  ? `${progress.played} sfide registrate`
+                  : `${progress.played} di ${progress.total} sfide decise`} · dati salvati su questo dispositivo
             </p>
           </div>
           <div className="flex w-full max-w-md flex-col gap-3">
@@ -142,15 +170,19 @@ export function TournamentView({
             ) : null}
             <div className="rounded-2xl border border-white/8 bg-white/[.025] p-4">
               <div className="mb-2 flex items-center justify-between text-xs">
-                <span className="text-white/45">Avanzamento torneo</span>
-                <span className="font-mono font-semibold text-lime-200">{progress.percentage}%</span>
+                <span className="text-white/45">{openEnded ? "Stato" : "Avanzamento torneo"}</span>
+                <span className="font-mono font-semibold text-lime-200">
+                  {openEnded
+                    ? tournament.status === "completed" ? "Concluso" : "In corso"
+                    : `${progress.percentage}%`}
+                </span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-white/8">
+              {!openEnded ? <div className="h-2 overflow-hidden rounded-full bg-white/8">
                 <div
                   className="h-full rounded-full bg-lime-300 transition-[width] duration-500"
                   style={{ width: `${progress.percentage}%` }}
                 />
-              </div>
+              </div> : <p className="text-xs leading-5 text-white/35">{tournament.format === "duel" ? "Continua finché non scegli di concluderlo." : "Aggiorna i punteggi in qualsiasi momento."}</p>}
             </div>
           </div>
         </div>
@@ -183,6 +215,7 @@ export function TournamentView({
           champion={champion ?? undefined}
           nextMatches={nextMatches}
           onScore={updateScore}
+          onParticipantScore={updateScoreboard}
           onNavigate={setActiveTab}
           readOnly={!canEdit}
           isSynced={isSynced}
@@ -192,7 +225,7 @@ export function TournamentView({
         <MatchesSection tournament={tournament} onScore={updateScore} readOnly={!canEdit} />
       ) : null}
       {activeTab === "standings" ? (
-        <StandingsSection tournament={tournament} />
+        <StandingsSection tournament={tournament} onScore={updateScoreboard} readOnly={!canEdit} />
       ) : null}
       {activeTab === "bracket" ? (
         <BracketView
@@ -200,6 +233,7 @@ export function TournamentView({
           participants={tournament.participants}
           onScore={updateScore}
           readOnly={!canEdit}
+          scoreDirection={tournament.settings.scoring.scoreDirection}
         />
       ) : null}
       {activeTab === "settings" ? (
@@ -222,6 +256,7 @@ function Overview({
   champion,
   nextMatches,
   onScore,
+  onParticipantScore,
   onNavigate,
   readOnly,
   isSynced,
@@ -230,13 +265,14 @@ function Overview({
   champion?: Participant;
   nextMatches: Tournament["matches"];
   onScore: (matchId: string, score: MatchScoreUpdate) => void;
+  onParticipantScore: (participantId: string, score: number) => void;
   onNavigate: (tab: TabId) => void;
   readOnly: boolean;
   isSynced: boolean;
 }) {
   const progress = tournamentProgress(tournament);
   const leagueMatches = tournament.matches.filter((match) => match.phase !== "knockout");
-  const standings = tournament.format !== "knockout"
+  const standings = tournament.format !== "knockout" && tournament.format !== "scoreboard" && tournament.format !== "team-scoreboard"
     ? calculateStandings(
         tournament.format === "hybrid"
           ? tournament.groups[0]?.participantIds ?? []
@@ -244,15 +280,43 @@ function Overview({
         tournament.format === "hybrid"
           ? leagueMatches.filter((match) => match.groupId === tournament.groups[0]?.id)
           : leagueMatches,
+        tournament.settings.scoring,
       )
     : [];
-  const leader = tournament.participants.find(
-    (participant) => participant.id === standings[0]?.participantId,
-  );
+  const scoreboardLeader = [...tournament.participants].sort(
+    (first, second) =>
+      compareRankedScores(
+        first.score ?? 0,
+        second.score ?? 0,
+        tournament.settings.scoring.scoreDirection,
+      ) ||
+      first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
+  )[0];
+  const teamTotals = new Map<string, number>();
+  tournament.participants.forEach((participant) => {
+    if (!participant.teamName) return;
+    teamTotals.set(
+      participant.teamName,
+      (teamTotals.get(participant.teamName) ?? 0) + (participant.score ?? 0),
+    );
+  });
+  const teamLeader = Array.from(teamTotals, ([name, total]) => ({ name, total })).sort(
+    (first, second) =>
+      compareRankedScores(
+        first.total,
+        second.total,
+        tournament.settings.scoring.scoreDirection,
+      ) || first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
+  )[0];
+  const leader = tournament.format === "scoreboard"
+    ? scoreboardLeader
+    : tournament.participants.find(
+        (participant) => participant.id === standings[0]?.participantId,
+      );
 
   return (
     <div className="space-y-7">
-      {champion ? (
+      {champion || (tournament.format === "team-scoreboard" && tournament.status === "completed" && teamLeader) ? (
         <section className="relative overflow-hidden rounded-3xl border border-lime-300/20 bg-lime-300/[.075] p-6 sm:p-8">
           <div className="absolute -right-8 -top-14 size-44 rounded-full bg-lime-300/10 blur-3xl" />
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
@@ -260,11 +324,11 @@ function Overview({
               <Trophy className="size-7" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[.18em] text-lime-200/65">Campione del torneo</p>
+              <p className="text-xs font-semibold uppercase tracking-[.18em] text-lime-200/65">Vincitore del torneo</p>
               <h2 className="mt-1 text-3xl font-medium tracking-tight text-white">
-                {champion.name}
+                {champion?.name ?? teamLeader?.name}
               </h2>
-              {champion.teamName ? (
+              {champion?.teamName ? (
                 <p className="mt-1 text-sm font-medium text-lime-100/65">
                   {champion.teamName}
                 </p>
@@ -277,17 +341,48 @@ function Overview({
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Users} label="Partecipanti" value={String(tournament.participants.length)} note="Massimo 16" />
-        <StatCard icon={CalendarDays} label="Sfide decise" value={`${progress.played}/${progress.total}`} note={`${progress.percentage}% completato`} />
+        <StatCard
+          icon={tournament.format === "scoreboard" ? ChartNoAxesColumnIncreasing : tournament.format === "team-scoreboard" ? UsersRound : CalendarDays}
+          label={tournament.format === "scoreboard" ? "Punteggio migliore" : tournament.format === "team-scoreboard" ? "Totale migliore" : "Sfide decise"}
+          value={tournament.format === "scoreboard" ? String(scoreboardLeader?.score ?? 0) : tournament.format === "team-scoreboard" ? String(teamLeader?.total ?? 0) : tournament.format === "duel" ? String(progress.played) : `${progress.played}/${progress.total}`}
+          note={tournament.format === "scoreboard" || tournament.format === "team-scoreboard" ? `Vince il valore ${tournament.settings.scoring.scoreDirection === "higher" ? "più alto" : "più basso"}` : tournament.format === "duel" ? "Senza limite prestabilito" : `${progress.percentage}% completato`}
+        />
         <StatCard
           icon={Trophy}
           label={tournament.format === "knockout" ? "Formato" : "In testa"}
-          value={tournament.format === "knockout" ? "KO" : leader ? participantLabel(leader) : "—"}
+          value={tournament.format === "knockout" ? "KO" : tournament.format === "team-scoreboard" ? teamLeader?.name ?? "—" : leader ? participantLabel(leader) : "—"}
           note={tournament.format === "hybrid" ? "Primo del Girone A" : FORMAT_LABELS[tournament.format]}
         />
         <StatCard icon={ShieldCheck} label="Salvataggio" value={isSynced ? "Cloud" : "Locale"} note={isSynced ? "Supabase + cache offline" : "Solo su questo dispositivo"} />
       </section>
 
-      <section>
+      {tournament.format === "scoreboard" ? (
+        <section>
+          <div className="mb-4">
+            <p className="text-xs uppercase tracking-[.15em] text-white/35">Punteggi</p>
+            <h2 className="mt-1 text-xl font-medium tracking-tight text-white">Classifica attuale</h2>
+          </div>
+          <ScoreboardTable
+            participants={tournament.participants}
+            onScore={onParticipantScore}
+            readOnly={readOnly}
+            scoreDirection={tournament.settings.scoring.scoreDirection}
+          />
+        </section>
+      ) : tournament.format === "team-scoreboard" ? (
+        <section>
+          <div className="mb-4">
+            <p className="text-xs uppercase tracking-[.15em] text-white/35">Squadre e coppie</p>
+            <h2 className="mt-1 text-xl font-medium tracking-tight text-white">Classifica attuale</h2>
+          </div>
+          <TeamScoreboardTable
+            participants={tournament.participants}
+            scoreDirection={tournament.settings.scoring.scoreDirection}
+            onScore={onParticipantScore}
+            readOnly={readOnly}
+          />
+        </section>
+      ) : <section>
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[.15em] text-white/35">Prossimo passo</p>
@@ -306,6 +401,7 @@ function Overview({
                 participants={tournament.participants}
                 onChange={(score) => onScore(match.id, score)}
                 readOnly={readOnly}
+                scoreDirection={tournament.settings.scoring.scoreDirection}
               />
             ))}
           </div>
@@ -313,10 +409,10 @@ function Overview({
           <div className="rounded-3xl border border-dashed border-white/10 bg-white/[.02] p-8 text-center">
             <CheckCircle2 className="mx-auto size-6 text-lime-300" />
             <p className="mt-3 text-sm font-medium text-white">Nessun risultato in sospeso</p>
-            <p className="mt-1 text-xs text-white/35">Hai completato tutte le partite attualmente disponibili.</p>
+            <p className="mt-1 text-xs text-white/35">Hai completato tutte le sfide attualmente disponibili.</p>
           </div>
         )}
-      </section>
+      </section>}
     </div>
   );
 }
@@ -364,8 +460,8 @@ function MatchesSection({
     <section>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[.15em] text-white/35">Calendario</p>
-          <h2 className="mt-1 text-2xl font-medium tracking-tight text-white">Tutte le partite</h2>
+          <p className="text-xs uppercase tracking-[.15em] text-white/35">{tournament.format === "duel" ? "Serie aperta" : "Calendario"}</p>
+          <h2 className="mt-1 text-2xl font-medium tracking-tight text-white">Tutte le sfide</h2>
         </div>
         {tournament.format === "hybrid" ? (
           <div className="flex rounded-xl border border-white/8 bg-black/15 p-1">
@@ -397,11 +493,11 @@ function MatchesSection({
               <div className="mb-3 flex items-center gap-3">
                 <h3 className="text-sm font-semibold text-white">{group ? `${group.name} · ` : ""}{roundMatches[0]?.roundLabel}</h3>
                 <span className="h-px flex-1 bg-white/[.06]" />
-                <span className="font-mono text-[10px] text-white/30">{roundMatches.length} partite</span>
+                <span className="font-mono text-[10px] text-white/30">{roundMatches.length} {roundMatches.length === 1 ? "sfida" : "sfide"}</span>
               </div>
               <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {roundMatches.map((match) => (
-                  <MatchCard key={match.id} match={match} participants={tournament.participants} onChange={(score) => onScore(match.id, score)} readOnly={readOnly} />
+                  <MatchCard key={match.id} match={match} participants={tournament.participants} onChange={(score) => onScore(match.id, score)} readOnly={readOnly} scoreDirection={tournament.settings.scoring.scoreDirection} />
                 ))}
               </div>
             </div>
@@ -412,7 +508,35 @@ function MatchesSection({
   );
 }
 
-function StandingsSection({ tournament }: { tournament: Tournament }) {
+function StandingsSection({
+  tournament,
+  onScore,
+  readOnly,
+}: {
+  tournament: Tournament;
+  onScore: (participantId: string, score: number) => void;
+  readOnly: boolean;
+}) {
+  if (tournament.format === "scoreboard") {
+    return (
+      <ScoreboardTable
+        participants={tournament.participants}
+        onScore={onScore}
+        readOnly={readOnly}
+        scoreDirection={tournament.settings.scoring.scoreDirection}
+      />
+    );
+  }
+  if (tournament.format === "team-scoreboard") {
+    return (
+      <TeamScoreboardTable
+        participants={tournament.participants}
+        scoreDirection={tournament.settings.scoring.scoreDirection}
+        onScore={onScore}
+        readOnly={readOnly}
+      />
+    );
+  }
   if (tournament.format === "hybrid") {
     return (
       <div className="grid gap-6 xl:grid-cols-2">
@@ -426,13 +550,14 @@ function StandingsSection({ tournament }: { tournament: Tournament }) {
               participants={tournament.participants.filter((participant) => group.participantIds.includes(participant.id))}
               matches={tournament.matches.filter((match) => match.groupId === group.id)}
               qualifiedCount={tournament.settings.qualifiersPerGroup}
+              scoring={tournament.settings.scoring}
             />
           </section>
         ))}
       </div>
     );
   }
-  return <StandingsTable participants={tournament.participants} matches={tournament.matches} />;
+  return <StandingsTable participants={tournament.participants} matches={tournament.matches} scoring={tournament.settings.scoring} />;
 }
 
 function DetailsSection({
@@ -457,6 +582,12 @@ function DetailsSection({
     createParticipantDrafts(tournament.participants),
   );
   const [participantError, setParticipantError] = useState("");
+  const [editingRules, setEditingRules] = useState(false);
+  const [scoringDraft, setScoringDraft] = useState<ScoringRules>(() => ({
+    ...tournament.settings.scoring,
+    tieBreakers: [...tournament.settings.scoring.tieBreakers],
+  }));
+  const [scoringError, setScoringError] = useState("");
 
   function startEditingParticipants() {
     setParticipantDrafts(createParticipantDrafts(tournament.participants));
@@ -483,7 +614,7 @@ function DetailsSection({
 
   function saveParticipants() {
     if (participantDrafts.some((participant) => !participant.name.trim())) {
-      setParticipantError("Il nome della persona è obbligatorio per tutti i partecipanti.");
+      setParticipantError("Il nome è obbligatorio per tutti i partecipanti.");
       return;
     }
 
@@ -493,8 +624,24 @@ function DetailsSection({
       ),
     );
     if (uniqueParticipants.size !== participantDrafts.length) {
-      setParticipantError("Ogni combinazione persona e squadra deve essere diversa.");
+      setParticipantError("Ogni combinazione di nome ed etichetta deve essere diversa.");
       return;
+    }
+    if (tournament.format === "team-scoreboard") {
+      const teamCounts = new Map<string, number>();
+      for (const participant of participantDrafts) {
+        const teamName = participant.teamName.trim();
+        if (!teamName) {
+          setParticipantError("Ogni persona deve appartenere a una squadra o coppia.");
+          return;
+        }
+        const key = teamName.toLocaleLowerCase("it");
+        teamCounts.set(key, (teamCounts.get(key) ?? 0) + 1);
+      }
+      if (teamCounts.size < 2 || Array.from(teamCounts.values()).some((count) => count < 2)) {
+        setParticipantError("Servono almeno due squadre o coppie, con almeno due persone ciascuna.");
+        return;
+      }
     }
 
     const draftById = new Map(
@@ -517,6 +664,34 @@ function DetailsSection({
     setEditingParticipants(false);
   }
 
+  function startEditingRules() {
+    setScoringDraft({
+      ...tournament.settings.scoring,
+      tieBreakers: [...tournament.settings.scoring.tieBreakers],
+    });
+    setScoringError("");
+    setEditingRules(true);
+  }
+
+  function saveRules() {
+    const pointValues = [
+      scoringDraft.winPoints,
+      scoringDraft.drawPoints,
+      scoringDraft.lossPoints,
+    ];
+    if (pointValues.some((value) => !Number.isFinite(value))) {
+      setScoringError("Inserisci valori numerici validi per vittoria, pareggio e sconfitta.");
+      return;
+    }
+    if (new Set(scoringDraft.tieBreakers).size !== scoringDraft.tieBreakers.length) {
+      setScoringError("I criteri di spareggio devono essere diversi tra loro.");
+      return;
+    }
+    onUpdate(updateTournamentScoringRules(tournament, scoringDraft));
+    setScoringError("");
+    setEditingRules(false);
+  }
+
   function downloadBackup() {
     const blob = new Blob([JSON.stringify(tournament, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -533,10 +708,42 @@ function DetailsSection({
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <Detail label="Formato" value={FORMAT_LABELS[tournament.format]} />
           <Detail label="Partecipanti" value={`${tournament.participants.length} / 16`} />
-          {tournament.format !== "knockout" ? <Detail label="Calendario" value={tournament.settings.leagueLegs === 2 ? "Andata e ritorno" : "Sola andata"} /> : null}
-          {tournament.format !== "league" ? <Detail label="Turni a eliminazione" value={tournament.settings.knockoutLegs === 2 ? "Andata e ritorno" : "Gara singola"} /> : null}
+          {tournament.format === "league" ? <Detail label="Calendario" value={tournament.settings.leagueLegs === 2 ? "Andata e ritorno" : "Sola andata"} /> : null}
+          {tournament.format === "duel" ? <Detail label="Durata" value="Serie libera, senza limite di sfide" /> : null}
+          {tournament.format === "scoreboard" ? <Detail label="Punteggi" value="Liberi, anche con valori negativi" /> : null}
+          {tournament.format === "team-scoreboard" ? <Detail label="Punteggi" value="Individuali con totale di squadra" /> : null}
+          {tournament.format === "knockout" || tournament.format === "hybrid" ? <Detail label="Turni a eliminazione" value={tournament.settings.knockoutLegs === 2 ? "Andata e ritorno" : "Gara singola"} /> : null}
           {tournament.format === "hybrid" ? <Detail label="Gironi" value={`${tournament.settings.groupCount} · ${tournament.settings.qualifiersPerGroup} qualificati`} /> : null}
-          <Detail label="Spareggi classifica" value="Scontri diretti → DR → GF" />
+          <Detail label="Punteggio migliore" value={tournament.settings.scoring.scoreDirection === "higher" ? "Più alto" : "Più basso"} />
+          {tournament.format === "league" || tournament.format === "duel" || tournament.format === "hybrid" ? <Detail label="Punti V / N / P" value={`${tournament.settings.scoring.winPoints} / ${tournament.settings.scoring.drawPoints} / ${tournament.settings.scoring.lossPoints}`} /> : null}
+          {tournament.format === "league" || tournament.format === "duel" || tournament.format === "hybrid" ? <Detail label="Spareggi classifica" value={tournament.settings.scoring.tieBreakers.map((tieBreaker) => TIE_BREAKER_LABELS[tieBreaker]).join(" → ")} /> : null}
+        </div>
+        <div className="mt-7 rounded-2xl border border-white/8 bg-black/15 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-medium text-white">Regole di punteggio</h3>
+              <p className="mt-1 text-xs leading-5 text-white/35">Le modifiche ricalcolano classifica e passaggi del tabellone.</p>
+            </div>
+            {canEdit && !editingRules ? (
+              <Button type="button" variant="ghost" size="sm" onClick={startEditingRules}>
+                <Pencil className="size-3.5" /> Modifica
+              </Button>
+            ) : null}
+          </div>
+          {editingRules ? (
+            <div className="mt-4">
+              <ScoringRulesFields
+                format={tournament.format}
+                rules={scoringDraft}
+                onChange={setScoringDraft}
+              />
+              {scoringError ? <p className="mt-3 text-xs text-red-200" role="alert">{scoringError}</p> : null}
+              <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setEditingRules(false)}><X className="size-4" /> Annulla</Button>
+                <Button type="button" size="sm" onClick={saveRules}><Check className="size-4" /> Salva regole</Button>
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="mt-7">
           <div className="flex items-center justify-between gap-4">
@@ -552,8 +759,8 @@ function DetailsSection({
               <div className="overflow-hidden rounded-2xl border border-white/8 bg-black/15">
                 <div className="hidden grid-cols-[2rem_1fr_1fr] gap-2 border-b border-white/8 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[.13em] text-white/30 sm:grid">
                   <span>#</span>
-                  <span>Persona</span>
-                  <span>Squadra (facoltativa)</span>
+                  <span>Nome o nickname</span>
+                  <span>{tournament.format === "team-scoreboard" ? "Squadra o coppia" : "Etichetta (facoltativa)"}</span>
                 </div>
                 <div className="divide-y divide-white/[.055]">
                   {participantDrafts.map((participant, index) => (
@@ -563,7 +770,7 @@ function DetailsSection({
                       </span>
                       <label className="min-w-0">
                         <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">
-                          Persona
+                          Nome o nickname
                         </span>
                         <input
                           className="h-11 w-full rounded-xl border border-white/10 bg-white/[.055] px-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
@@ -576,7 +783,7 @@ function DetailsSection({
                       </label>
                       <label className="col-start-2 min-w-0 sm:col-start-auto">
                         <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">
-                          Squadra (facoltativa)
+                          {tournament.format === "team-scoreboard" ? "Squadra o coppia" : "Etichetta (facoltativa)"}
                         </span>
                         <input
                           className="h-11 w-full rounded-xl border border-white/10 bg-white/[.055] px-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
@@ -584,7 +791,7 @@ function DetailsSection({
                           onChange={(event) =>
                             updateParticipantDraft(participant.id, "teamName", event.target.value)
                           }
-                          aria-label={`Squadra partecipante ${index + 1}, facoltativa`}
+                          aria-label={tournament.format === "team-scoreboard" ? `Squadra o coppia del partecipante ${index + 1}` : `Etichetta partecipante ${index + 1}, facoltativa`}
                         />
                       </label>
                     </div>
@@ -618,6 +825,30 @@ function DetailsSection({
         </div>
       </section>
       <aside className="space-y-4">
+        {(tournament.format === "duel" || tournament.format === "scoreboard" || tournament.format === "team-scoreboard") && canEdit ? (
+          <div className="rounded-3xl border border-lime-300/10 bg-lime-300/[.035] p-5">
+            <SquareCheckBig className="size-5 text-lime-300" />
+            <h3 className="mt-4 font-medium text-white">
+              {tournament.status === "completed" ? "Torneo concluso" : "Conclusione manuale"}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-white/40">
+              {tournament.status === "completed"
+                ? "Puoi riaprirlo e continuare ad aggiornare risultati o punteggi."
+                : "Decidi tu quando questa modalità aperta è terminata."}
+            </p>
+            <Button
+              className="mt-4 w-full"
+              variant={tournament.status === "completed" ? "secondary" : "primary"}
+              onClick={() => onUpdate(setTournamentStatus(
+                tournament,
+                tournament.status === "completed" ? "active" : "completed",
+              ))}
+            >
+              <SquareCheckBig className="size-4" />
+              {tournament.status === "completed" ? "Riapri torneo" : "Concludi torneo"}
+            </Button>
+          </div>
+        ) : null}
         <div className="rounded-3xl border border-white/8 bg-white/[.025] p-5">
           <Download className="size-5 text-lime-300" />
           <h3 className="mt-4 font-medium text-white">{isSynced ? "Cloud + backup" : "Backup locale"}</h3>

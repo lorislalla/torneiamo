@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Clock3, CornerDownRight } from "lucide-react";
-import type { Match, MatchScoreUpdate, Participant } from "@/domain/types";
+import type { Match, MatchScoreUpdate, Participant, ScoreDirection } from "@/domain/types";
 import { participantLabel } from "@/domain/participant-label";
 import { getMatchWinner, isMatchPlayed } from "@/domain/tournament-engine";
 import { cn } from "@/lib/cn";
@@ -13,19 +13,21 @@ export function MatchCard({
   onChange,
   compact = false,
   readOnly = false,
+  scoreDirection = "higher",
 }: {
   match: Match;
   participants: Participant[];
   onChange: (score: MatchScoreUpdate) => void;
   compact?: boolean;
   readOnly?: boolean;
+  scoreDirection?: ScoreDirection;
 }) {
   const participantById = new Map(
     participants.map((participant) => [participant.id, participant]),
   );
   const home = match.homeId ? (participantById.get(match.homeId) ?? null) : null;
   const away = match.awayId ? (participantById.get(match.awayId) ?? null) : null;
-  const winnerId = getMatchWinner(match, match.twoLegs);
+  const winnerId = getMatchWinner(match, match.twoLegs, scoreDirection);
   const playable = Boolean(home && away);
   const firstLegComplete = isMatchPlayed(match);
   const returnLegComplete =
@@ -222,14 +224,29 @@ function PlayerScoreRow({
       </span>
       {isWinner ? <Check className="size-3.5 text-lime-300" /> : null}
       <input
+        key={score ?? "empty"}
         type="number"
         disabled={readOnly}
         min={0}
         inputMode="numeric"
-        aria-label={`Gol ${participantLabel(participant)}`}
+        aria-label={`Punteggio ${participantLabel(participant)}`}
         className="size-10 rounded-lg border border-white/10 bg-black/25 text-center font-mono text-base font-semibold text-white outline-none transition focus:border-lime-300/55 focus:ring-2 focus:ring-lime-300/10"
-        value={score ?? ""}
-        onChange={(event) => onChange(event.target.value)}
+        defaultValue={score ?? ""}
+        onBlur={(event) => {
+          const parsed = event.currentTarget.value === ""
+            ? null
+            : Math.max(0, Number.parseInt(event.currentTarget.value, 10));
+          const next = parsed === null || Number.isNaN(parsed) ? "" : String(parsed);
+          event.currentTarget.value = next;
+          if ((parsed === null ? null : parsed) !== score) onChange(next);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") {
+            event.currentTarget.value = score === null ? "" : String(score);
+            event.currentTarget.blur();
+          }
+        }}
         placeholder="–"
       />
     </div>

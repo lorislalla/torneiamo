@@ -1,5 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { Tournament } from "@/domain/types";
+import { normalizeTournament } from "@/domain/tournament-engine";
 import type { Database, Json } from "@/lib/supabase/database.types";
 import { getLocalTournamentRepository } from "./local-storage-tournament-repository";
 import type {
@@ -188,7 +189,7 @@ export class SupabaseTournamentRepository implements TournamentRepository {
       revision: row.revision,
       role: role ?? (row.owner_id === this.userId ? "owner" : "viewer"),
     });
-    return row.data as unknown as Tournament;
+    return normalizeTournament(row.data as unknown as Tournament);
   }
 
   private toInsert(tournament: Tournament) {

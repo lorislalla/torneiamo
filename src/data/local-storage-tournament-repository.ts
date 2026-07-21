@@ -1,4 +1,5 @@
 import type { Tournament } from "@/domain/types";
+import { normalizeTournament } from "@/domain/tournament-engine";
 import type { TournamentRepository } from "./tournament-repository";
 
 const STORAGE_KEY = "torneiamo:tournaments:v1";
@@ -11,7 +12,9 @@ export class LocalStorageTournamentRepository
     if (!raw) return [];
     try {
       const parsed = JSON.parse(raw) as unknown;
-      return Array.isArray(parsed) ? (parsed as Tournament[]) : [];
+      return Array.isArray(parsed)
+        ? (parsed as Tournament[]).map(normalizeTournament)
+        : [];
     } catch {
       return [];
     }

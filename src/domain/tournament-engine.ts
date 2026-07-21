@@ -2,6 +2,8 @@ import type {
   Match,
   MatchScoreUpdate,
   Participant,
+  ScoringRules,
+  ScoreDirection,
   StandingRow,
   Tournament,
   TournamentFormat,
@@ -20,12 +22,21 @@ const PARTICIPANT_ACCENTS = [
   "#8CB4FF",
 ];
 
-const DEFAULT_SETTINGS: TournamentSettings = {
+export const DEFAULT_SCORING_RULES: ScoringRules = {
+  winPoints: 3,
+  drawPoints: 1,
+  lossPoints: 0,
+  scoreDirection: "higher",
+  tieBreakers: ["headToHead", "scoreDifference", "scoreFor"],
+};
+
+export const DEFAULT_TOURNAMENT_SETTINGS: TournamentSettings = {
   leagueLegs: 1,
   knockoutLegs: 1,
   groupCount: 2,
   qualifiersPerGroup: 2,
   shuffleParticipants: true,
+  scoring: DEFAULT_SCORING_RULES,
 };
 
 function createId(prefix: string) {
@@ -57,9 +68,19 @@ export function createTournament(input: {
     ...(participant.teamName?.trim()
       ? { teamName: participant.teamName.trim() }
       : {}),
+    ...(input.format === "scoreboard" || input.format === "team-scoreboard"
+      ? { score: 0 }
+      : {}),
     accent: PARTICIPANT_ACCENTS[index % PARTICIPANT_ACCENTS.length],
   }));
-  const settings = { ...DEFAULT_SETTINGS, ...input.settings };
+  const settings = {
+    ...DEFAULT_TOURNAMENT_SETTINGS,
+    ...input.settings,
+    scoring: {
+      ...DEFAULT_SCORING_RULES,
+      ...input.settings?.scoring,
+    },
+  };
   const orderedParticipants = settings.shuffleParticipants
     ? shuffle(participants)
     : participants;
@@ -86,6 +107,10 @@ export function createTournament(input: {
     );
   }
 
+  if (input.format === "duel") {
+    base.matches = [createDuelMatch(participants, 1)];
+  }
+
   if (input.format === "knockout") {
     base.bracketSeedIds = orderedParticipants.map((participant) => participant.id);
     base.matches = generateBracket(
@@ -93,7 +118,10 @@ export function createTournament(input: {
       settings.knockoutLegs,
       "knockout",
     );
-    base.matches = reconcileBracket(base.matches);
+    base.matches = reconcileBracket(
+      base.matches,
+      settings.scoring.scoreDirection,
+    );
   }
 
   if (input.format === "hybrid") {
@@ -143,20 +171,157 @@ export function updateMatchScore(
   };
 
   if (tournament.format === "knockout") {
-    next.matches = reconcileBracket(next.matches);
+    next.matches = reconcileBracket(
+      next.matches,
+      next.settings.scoring.scoreDirection,
+    );
   }
 
   if (tournament.format === "hybrid") {
     next = refreshHybridBracket(next);
   }
 
-  if (isTournamentComplete(next)) {
+  if (tournament.format === "duel" && tournament.status === "active") {
+    const lastMatch = next.matches.at(-1);
+    const earlierMatchNeedsScore = next.matches
+      .slice(0, -1)
+      .some((match) => !isMatchPlayed(match));
+
+    if (lastMatch && !isMatchPlayed(lastMatch) && earlierMatchNeedsScore) {
+      next.matches = next.matches.slice(0, -1);
+    }
+
+    if (next.matches.length > 0 && next.matches.every(isMatchPlayed)) {
+      next.matches = [
+        ...next.matches,
+        createDuelMatch(next.participants, next.matches.length + 1),
+      ];
+    }
+  }
+
+  if (
+    tournament.format === "duel" ||
+    tournament.format === "scoreboard" ||
+    tournament.format === "team-scoreboard"
+  ) {
+    next.status = tournament.status;
+  } else if (isTournamentComplete(next)) {
     next.status = "completed";
   } else {
     next.status = "active";
   }
 
   return next;
+}
+
+function createDuelMatch(participants: Participant[], round: number): Match {
+  const reverseOrder = round % 2 === 0;
+  return createMatch({
+    id: `duel-r${round}`,
+    phase: "league",
+    round,
+    roundLabel: `Sfida ${round}`,
+    homeId: participants[reverseOrder ? 1 : 0]?.id ?? null,
+    awayId: participants[reverseOrder ? 0 : 1]?.id ?? null,
+  });
+}
+
+export function updateParticipantScore(
+  tournament: Tournament,
+  participantId: string,
+  score: number,
+): Tournament {
+  return {
+    ...tournament,
+    updatedAt: new Date().toISOString(),
+    participants: tournament.participants.map((participant) =>
+      participant.id === participantId ? { ...participant, score } : participant,
+    ),
+  };
+}
+
+export function updateTournamentScoringRules(
+  tournament: Tournament,
+  scoring: ScoringRules,
+): Tournament {
+  let next: Tournament = {
+    ...tournament,
+    settings: { ...tournament.settings, scoring },
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (next.format === "knockout") {
+    next.matches = reconcileBracket(next.matches, scoring.scoreDirection);
+  }
+
+  if (next.format === "hybrid") {
+    next = refreshHybridBracket(next);
+  }
+
+  if (
+    next.format !== "duel" &&
+    next.format !== "scoreboard" &&
+    next.format !== "team-scoreboard"
+  ) {
+    next.status = isTournamentComplete(next) ? "completed" : "active";
+  }
+
+  return next;
+}
+
+export function normalizeTournament(tournament: Tournament): Tournament {
+  const storedTieBreakers = tournament.settings?.scoring?.tieBreakers ?? [];
+  const tieBreakers = [
+    ...storedTieBreakers,
+    ...DEFAULT_SCORING_RULES.tieBreakers.filter(
+      (tieBreaker) => !storedTieBreakers.includes(tieBreaker),
+    ),
+  ].slice(0, 3);
+  const scoring = {
+    ...DEFAULT_SCORING_RULES,
+    ...(tournament.settings?.scoring ?? {}),
+    tieBreakers,
+  };
+
+  return {
+    ...tournament,
+    participants: tournament.participants.map((participant) =>
+      (tournament.format === "scoreboard" || tournament.format === "team-scoreboard") &&
+      participant.score === undefined
+        ? { ...participant, score: 0 }
+        : participant,
+    ),
+    settings: {
+      ...DEFAULT_TOURNAMENT_SETTINGS,
+      ...tournament.settings,
+      scoring,
+    },
+  };
+}
+
+export function setTournamentStatus(
+  tournament: Tournament,
+  status: Tournament["status"],
+): Tournament {
+  let matches = tournament.matches;
+
+  if (tournament.format === "duel") {
+    if (status === "completed") {
+      matches = matches.filter(isMatchPlayed);
+    } else if (matches.length === 0 || matches.every(isMatchPlayed)) {
+      matches = [
+        ...matches,
+        createDuelMatch(tournament.participants, matches.length + 1),
+      ];
+    }
+  }
+
+  return {
+    ...tournament,
+    matches,
+    status,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 export function generateRoundRobin(
@@ -288,7 +453,10 @@ function knockoutRoundLabel(matchesInRound: number, isFinal: boolean) {
   return `Turno con ${matchesInRound * 2} squadre`;
 }
 
-export function reconcileBracket(matches: Match[]): Match[] {
+export function reconcileBracket(
+  matches: Match[],
+  scoreDirection: ScoreDirection = "higher",
+): Match[] {
   const previousById = new Map(matches.map((match) => [match.id, match]));
   const result = matches.map((match) =>
     match.round === 1
@@ -324,7 +492,7 @@ export function reconcileBracket(matches: Match[]): Match[] {
         }
       }
 
-      const winnerId = getMatchWinner(match, match.twoLegs);
+      const winnerId = getMatchWinner(match, match.twoLegs, scoreDirection);
       if (!winnerId || !match.nextMatchId || !match.nextSlot) continue;
       const nextMatch = resultById.get(match.nextMatchId);
       if (nextMatch) {
@@ -336,7 +504,11 @@ export function reconcileBracket(matches: Match[]): Match[] {
   return result;
 }
 
-export function getMatchWinner(match: Match, twoLegs: boolean) {
+export function getMatchWinner(
+  match: Match,
+  twoLegs: boolean,
+  scoreDirection: ScoreDirection = "higher",
+) {
   if (match.round === 1 && match.homeId && !match.awayId) return match.homeId;
   if (match.round === 1 && !match.homeId && match.awayId) return match.awayId;
   if (!match.homeId || !match.awayId) return null;
@@ -350,8 +522,12 @@ export function getMatchWinner(match: Match, twoLegs: boolean) {
     awayTotal += match.returnHomeScore;
   }
 
-  if (homeTotal > awayTotal) return match.homeId;
-  if (awayTotal > homeTotal) return match.awayId;
+  if (homeTotal !== awayTotal) {
+    const homeWins = scoreDirection === "higher"
+      ? homeTotal > awayTotal
+      : homeTotal < awayTotal;
+    return homeWins ? match.homeId : match.awayId;
+  }
   return match.winnerOverrideId;
 }
 
@@ -362,8 +538,12 @@ export function isMatchPlayed(match: Match) {
 export function calculateStandings(
   participantIds: string[],
   matches: Match[],
+  scoring: ScoringRules = DEFAULT_SCORING_RULES,
 ): StandingRow[] {
   const table = new Map<string, Omit<StandingRow, "position">>();
+  const participantOrder = new Map(
+    participantIds.map((participantId, index) => [participantId, index]),
+  );
   participantIds.forEach((participantId) => {
     table.set(participantId, {
       participantId,
@@ -391,41 +571,63 @@ export function calculateStandings(
     home.goalsAgainst += awayScore;
     away.goalsFor += awayScore;
     away.goalsAgainst += homeScore;
-    if (homeScore > awayScore) {
+    const homeWins = scoring.scoreDirection === "higher"
+      ? homeScore > awayScore
+      : homeScore < awayScore;
+    const awayWins = scoring.scoreDirection === "higher"
+      ? awayScore > homeScore
+      : awayScore < homeScore;
+    if (homeWins) {
       home.won += 1;
       away.lost += 1;
-      home.points += 3;
-    } else if (awayScore > homeScore) {
+      home.points += scoring.winPoints;
+      away.points += scoring.lossPoints;
+    } else if (awayWins) {
       away.won += 1;
       home.lost += 1;
-      away.points += 3;
+      away.points += scoring.winPoints;
+      home.points += scoring.lossPoints;
     } else {
       home.drawn += 1;
       away.drawn += 1;
-      home.points += 1;
-      away.points += 1;
+      home.points += scoring.drawPoints;
+      away.points += scoring.drawPoints;
     }
   }
 
   const rows = Array.from(table.values()).map((row) => ({
     ...row,
-    goalDifference: row.goalsFor - row.goalsAgainst,
+    goalDifference: scoring.scoreDirection === "higher"
+      ? row.goalsFor - row.goalsAgainst
+      : row.goalsAgainst - row.goalsFor,
   }));
-  const headToHead = buildHeadToHead(rows, matches);
+  const headToHead = buildHeadToHead(rows, matches, scoring);
 
   rows.sort((first, second) => {
     if (second.points !== first.points) return second.points - first.points;
-    const firstH2h = headToHead.get(first.participantId) ?? { points: 0, gd: 0 };
-    const secondH2h = headToHead.get(second.participantId) ?? { points: 0, gd: 0 };
-    if (secondH2h.points !== firstH2h.points) {
-      return secondH2h.points - firstH2h.points;
+    for (const tieBreaker of scoring.tieBreakers) {
+      if (tieBreaker === "headToHead") {
+        const firstH2h = headToHead.get(first.participantId) ?? { points: 0, gd: 0 };
+        const secondH2h = headToHead.get(second.participantId) ?? { points: 0, gd: 0 };
+        if (secondH2h.points !== firstH2h.points) return secondH2h.points - firstH2h.points;
+        if (secondH2h.gd !== firstH2h.gd) return secondH2h.gd - firstH2h.gd;
+      }
+      if (tieBreaker === "scoreDifference" && second.goalDifference !== first.goalDifference) {
+        return second.goalDifference - first.goalDifference;
+      }
+      if (tieBreaker === "scoreFor" && second.goalsFor !== first.goalsFor) {
+        return scoring.scoreDirection === "higher"
+          ? second.goalsFor - first.goalsFor
+          : first.goalsFor - second.goalsFor;
+      }
+      if (tieBreaker === "wins" && second.won !== first.won) return second.won - first.won;
+      if (tieBreaker === "participantOrder") {
+        return (participantOrder.get(first.participantId) ?? 0) -
+          (participantOrder.get(second.participantId) ?? 0);
+      }
     }
-    if (secondH2h.gd !== firstH2h.gd) return secondH2h.gd - firstH2h.gd;
-    if (second.goalDifference !== first.goalDifference) {
-      return second.goalDifference - first.goalDifference;
-    }
-    if (second.goalsFor !== first.goalsFor) return second.goalsFor - first.goalsFor;
-    return first.participantId.localeCompare(second.participantId);
+    return (participantOrder.get(first.participantId) ?? 0) -
+      (participantOrder.get(second.participantId) ?? 0);
   });
 
   return rows.map((row, index) => ({ ...row, position: index + 1 }));
@@ -434,6 +636,7 @@ export function calculateStandings(
 function buildHeadToHead(
   rows: Array<Omit<StandingRow, "position">>,
   matches: Match[],
+  scoring: ScoringRules,
 ) {
   const tiedPointGroups = new Map<number, Set<string>>();
   for (const row of rows) {
@@ -460,13 +663,28 @@ function buildHeadToHead(
       const away = result.get(match.awayId)!;
       const homeScore = match.homeScore ?? 0;
       const awayScore = match.awayScore ?? 0;
-      home.gd += homeScore - awayScore;
-      away.gd += awayScore - homeScore;
-      if (homeScore > awayScore) home.points += 3;
-      else if (awayScore > homeScore) away.points += 3;
+      const difference = scoring.scoreDirection === "higher"
+        ? homeScore - awayScore
+        : awayScore - homeScore;
+      home.gd += difference;
+      away.gd -= difference;
+      const homeWins = scoring.scoreDirection === "higher"
+        ? homeScore > awayScore
+        : homeScore < awayScore;
+      const awayWins = scoring.scoreDirection === "higher"
+        ? awayScore > homeScore
+        : awayScore < homeScore;
+      if (homeWins) {
+        home.points += scoring.winPoints;
+        away.points += scoring.lossPoints;
+      }
+      else if (awayWins) {
+        away.points += scoring.winPoints;
+        home.points += scoring.lossPoints;
+      }
       else {
-        home.points += 1;
-        away.points += 1;
+        home.points += scoring.drawPoints;
+        away.points += scoring.drawPoints;
       }
     }
   }
@@ -497,9 +715,10 @@ function refreshHybridBracket(tournament: Tournament): Tournament {
   if (groupMatches.some((match) => !isMatchPlayed(match))) return tournament;
 
   const qualifiedByGroup = tournament.groups.map((group) => {
-    const standings = calculateStandings(
-      group.participantIds,
-      groupMatches.filter((match) => match.groupId === group.id),
+      const standings = calculateStandings(
+        group.participantIds,
+        groupMatches.filter((match) => match.groupId === group.id),
+        tournament.settings.scoring,
     );
     return standings
       .slice(0, tournament.settings.qualifiersPerGroup)
@@ -514,9 +733,10 @@ function refreshHybridBracket(tournament: Tournament): Tournament {
     tournament.bracketSeedIds.every((id, index) => id === seeds[index]);
 
   const knockoutMatches = sameSeeds && existingKnockout.length > 0
-    ? reconcileBracket(existingKnockout)
+    ? reconcileBracket(existingKnockout, tournament.settings.scoring.scoreDirection)
     : reconcileBracket(
         generateBracket(seeds, tournament.settings.knockoutLegs, "knockout"),
+        tournament.settings.scoring.scoreDirection,
       );
 
   return {
@@ -543,6 +763,13 @@ function buildHybridSeeds(groups: string[][]) {
 }
 
 export function isTournamentComplete(tournament: Tournament) {
+  if (
+    tournament.format === "duel" ||
+    tournament.format === "scoreboard" ||
+    tournament.format === "team-scoreboard"
+  ) {
+    return tournament.status === "completed";
+  }
   if (tournament.format === "league") {
     return tournament.matches.length > 0 && tournament.matches.every(isMatchPlayed);
   }
@@ -553,7 +780,11 @@ export function isTournamentComplete(tournament: Tournament) {
   const finalRound = Math.max(...knockoutMatches.map((match) => match.round));
   const final = knockoutMatches.find((match) => match.round === finalRound);
   return Boolean(
-    final && getMatchWinner(final, tournament.settings.knockoutLegs === 2),
+    final && getMatchWinner(
+      final,
+      tournament.settings.knockoutLegs === 2,
+      tournament.settings.scoring.scoreDirection,
+    ),
   );
 }
 
@@ -569,7 +800,11 @@ export function tournamentProgress(tournament: Tournament) {
     (match) =>
       match.homeId &&
       match.awayId &&
-      getMatchWinner(match, match.twoLegs),
+      getMatchWinner(
+        match,
+        match.twoLegs,
+        tournament.settings.scoring.scoreDirection,
+      ),
   ).length;
 
   let total = groupOrLeagueMatches.length;
@@ -598,10 +833,23 @@ export function tournamentProgress(tournament: Tournament) {
 
 export function getChampionId(tournament: Tournament) {
   if (!isTournamentComplete(tournament)) return null;
-  if (tournament.format === "league") {
+  if (tournament.format === "scoreboard") {
+    return [...tournament.participants].sort(
+      (first, second) =>
+        compareRankedScores(
+          first.score ?? 0,
+          second.score ?? 0,
+          tournament.settings.scoring.scoreDirection,
+        ) ||
+        first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
+    )[0]?.id ?? null;
+  }
+  if (tournament.format === "team-scoreboard") return null;
+  if (tournament.format === "league" || tournament.format === "duel") {
     return calculateStandings(
       tournament.participants.map((participant) => participant.id),
       tournament.matches,
+      tournament.settings.scoring,
     )[0]?.participantId ?? null;
   }
   const knockoutMatches = tournament.matches.filter(
@@ -610,6 +858,18 @@ export function getChampionId(tournament: Tournament) {
   const finalRound = Math.max(...knockoutMatches.map((match) => match.round));
   const final = knockoutMatches.find((match) => match.round === finalRound);
   return final
-    ? getMatchWinner(final, tournament.settings.knockoutLegs === 2)
+    ? getMatchWinner(
+        final,
+        tournament.settings.knockoutLegs === 2,
+        tournament.settings.scoring.scoreDirection,
+      )
     : null;
+}
+
+export function compareRankedScores(
+  first: number,
+  second: number,
+  direction: ScoreDirection,
+) {
+  return direction === "higher" ? second - first : first - second;
 }

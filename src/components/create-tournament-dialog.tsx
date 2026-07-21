@@ -1,11 +1,22 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { GitBranch, ListOrdered, Plus, Sparkles, Trash2, Trophy } from "lucide-react";
-import type { Tournament, TournamentFormat } from "@/domain/types";
-import { createTournament } from "@/domain/tournament-engine";
+import {
+  ChartNoAxesColumnIncreasing,
+  GitBranch,
+  ListOrdered,
+  Plus,
+  Sparkles,
+  Swords,
+  Trash2,
+  Trophy,
+  UsersRound,
+} from "lucide-react";
+import type { ScoringRules, Tournament, TournamentFormat } from "@/domain/types";
+import { createTournament, DEFAULT_SCORING_RULES } from "@/domain/tournament-engine";
 import { cn } from "@/lib/cn";
 import { Button, FieldLabel, Modal } from "./ui";
+import { ScoringRulesFields } from "./scoring-rules-fields";
 
 const FORMATS: Array<{
   id: TournamentFormat;
@@ -20,6 +31,12 @@ const FORMATS: Array<{
     icon: ListOrdered,
   },
   {
+    id: "duel",
+    label: "Campionato a 2",
+    description: "Due persone si sfidano senza un numero prestabilito di partite.",
+    icon: Swords,
+  },
+  {
     id: "knockout",
     label: "Eliminazione",
     description: "Tabellone diretto con sorteggio e bye automatici.",
@@ -30,6 +47,18 @@ const FORMATS: Array<{
     label: "Gironi + playoff",
     description: "Fase a gironi e tabellone finale per i qualificati.",
     icon: Trophy,
+  },
+  {
+    id: "scoreboard",
+    label: "Classifica libera",
+    description: "Punteggi modificabili, anche negativi, per giochi di ogni tipo.",
+    icon: ChartNoAxesColumnIncreasing,
+  },
+  {
+    id: "team-scoreboard",
+    label: "Classifica a squadre",
+    description: "Punteggi individuali e totale condiviso per squadre o coppie.",
+    icon: UsersRound,
   },
 ];
 
@@ -64,6 +93,10 @@ export function CreateTournamentDialog({
   const [groupCount, setGroupCount] = useState(2);
   const [qualifiers, setQualifiers] = useState(2);
   const [shuffle, setShuffle] = useState(true);
+  const [scoring, setScoring] = useState<ScoringRules>(() => ({
+    ...DEFAULT_SCORING_RULES,
+    tieBreakers: [...DEFAULT_SCORING_RULES.tieBreakers],
+  }));
   const [error, setError] = useState("");
 
   const participants = participantRows
@@ -88,13 +121,29 @@ export function CreateTournamentDialog({
   }
 
   function addParticipant() {
-    if (participantRows.length >= 16) return;
+    const limit = format === "duel" ? 2 : 16;
+    if (participantRows.length >= limit) return;
     const id = nextParticipantId.current;
     nextParticipantId.current += 1;
     setParticipantRows((current) => [
       ...current,
       { id, name: "", teamName: "" },
     ]);
+  }
+
+  function selectFormat(nextFormat: TournamentFormat) {
+    setFormat(nextFormat);
+    if (nextFormat === "duel") {
+      setParticipantRows((current) => current.slice(0, 2));
+    }
+    if (nextFormat === "team-scoreboard" && participantRows.length < 4) {
+      const additions = Array.from({ length: 4 - participantRows.length }, () => {
+        const id = nextParticipantId.current;
+        nextParticipantId.current += 1;
+        return { id, name: "", teamName: "" };
+      });
+      setParticipantRows((current) => [...current, ...additions]);
+    }
   }
 
   function removeParticipant(id: number) {
@@ -129,17 +178,40 @@ export function CreateTournamentDialog({
       setError("Inserisci da 2 a 16 partecipanti.");
       return;
     }
+    if (format === "duel" && participants.length !== 2) {
+      setError("Il Campionato a 2 richiede esattamente due partecipanti.");
+      return;
+    }
     if (uniqueParticipants.size !== participants.length) {
-      setError("Ogni combinazione persona e squadra deve essere diversa.");
+      setError("Ogni combinazione di nome ed etichetta deve essere diversa.");
       return;
     }
     if (participantRows.some((participant) => !participant.name.trim() && participant.teamName.trim())) {
-      setError("Inserisci il nome della persona per ogni squadra indicata.");
+      setError("Inserisci un nome per ogni etichetta indicata.");
       return;
     }
     if (format === "hybrid" && participants.length < groupCount * 2) {
       setError(`Servono almeno ${groupCount * 2} partecipanti per ${groupCount} gironi.`);
       return;
+    }
+    if (new Set(scoring.tieBreakers).size !== scoring.tieBreakers.length) {
+      setError("Scegli criteri di spareggio diversi tra loro.");
+      return;
+    }
+    if (format === "team-scoreboard") {
+      if (participants.some((participant) => !participant.teamName)) {
+        setError("Assegna ogni partecipante a una squadra o coppia.");
+        return;
+      }
+      const teamCounts = new Map<string, number>();
+      participants.forEach((participant) => {
+        const team = participant.teamName!.toLocaleLowerCase("it");
+        teamCounts.set(team, (teamCounts.get(team) ?? 0) + 1);
+      });
+      if (teamCounts.size < 2 || Array.from(teamCounts.values()).some((count) => count < 2)) {
+        setError("Servono almeno due squadre o coppie, con almeno due persone ciascuna.");
+        return;
+      }
     }
 
     onCreate(
@@ -153,12 +225,18 @@ export function CreateTournamentDialog({
           groupCount,
           qualifiersPerGroup: qualifiers,
           shuffleParticipants: shuffle,
+          scoring,
         },
       }),
     );
     setName("");
+    setFormat("league");
     setParticipantRows(initialParticipants());
     nextParticipantId.current = 2;
+    setScoring({
+      ...DEFAULT_SCORING_RULES,
+      tieBreakers: [...DEFAULT_SCORING_RULES.tieBreakers],
+    });
     setError("");
   }
 
@@ -167,7 +245,7 @@ export function CreateTournamentDialog({
       open={open}
       onClose={resetAndClose}
       title="Crea un nuovo torneo"
-      description="Configura il formato, aggiungi i giocatori e pensa solo ai risultati."
+      description="Scegli la modalità e aggiungi i partecipanti."
     >
       <form className="space-y-7 p-5 sm:p-7" onSubmit={submit}>
         <label className="block">
@@ -176,14 +254,14 @@ export function CreateTournamentDialog({
             className="h-12 w-full rounded-xl border border-white/10 bg-white/[.055] px-4 text-white outline-none transition placeholder:text-white/25 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Es. Friday Night Cup"
+            placeholder="Es. Serata giochi"
             autoFocus
           />
         </label>
 
         <fieldset>
           <FieldLabel>Formato</FieldLabel>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2">
             {FORMATS.map((item) => {
               const Icon = item.icon;
               const selected = item.id === format;
@@ -197,7 +275,7 @@ export function CreateTournamentDialog({
                       ? "border-lime-300/55 bg-lime-300/[.08]"
                       : "border-white/8 bg-white/[.025] hover:border-white/15 hover:bg-white/[.05]",
                   )}
-                  onClick={() => setFormat(item.id)}
+                  onClick={() => selectFormat(item.id)}
                   aria-pressed={selected}
                 >
                   <Icon className={cn("mb-5 size-5", selected ? "text-lime-300" : "text-white/45")} />
@@ -215,14 +293,14 @@ export function CreateTournamentDialog({
           <div className="mb-2 flex items-end justify-between gap-4">
             <FieldLabel>Partecipanti</FieldLabel>
             <span className="mb-2 font-mono text-xs text-white/35">
-              {participants.length}/16
+              {participants.length}/{format === "duel" ? 2 : 16}
             </span>
           </div>
           <div className="overflow-hidden rounded-2xl border border-white/8 bg-black/15">
             <div className="hidden grid-cols-[2rem_1fr_1fr_2.5rem] gap-2 border-b border-white/8 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[.13em] text-white/30 sm:grid">
               <span>#</span>
-              <span>Persona</span>
-              <span>Squadra (facoltativa)</span>
+              <span>Nome o nickname</span>
+              <span>{format === "team-scoreboard" ? "Squadra o coppia" : "Etichetta (facoltativa)"}</span>
               <span />
             </div>
             <div className="divide-y divide-white/[.055]">
@@ -230,23 +308,23 @@ export function CreateTournamentDialog({
                 <div key={participant.id} className="grid grid-cols-[2rem_1fr_2.5rem] gap-2 p-3 sm:grid-cols-[2rem_1fr_1fr_2.5rem]">
                   <span className="grid h-11 place-items-center font-mono text-xs text-white/25">{index + 1}</span>
                   <label className="min-w-0">
-                    <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">Persona</span>
+                    <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">Nome o nickname</span>
                     <input
                       className="h-11 w-full rounded-xl border border-white/10 bg-white/[.055] px-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
                       value={participant.name}
                       onChange={(event) => updateParticipant(participant.id, "name", event.target.value)}
-                      placeholder="Es. Loris"
+                      placeholder="Nome partecipante"
                       aria-label={`Nome partecipante ${index + 1}`}
                     />
                   </label>
                   <label className="col-start-2 min-w-0 sm:col-start-auto">
-                    <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">Squadra (facoltativa)</span>
+                    <span className="mb-1 block text-[10px] uppercase tracking-[.12em] text-white/30 sm:hidden">{format === "team-scoreboard" ? "Squadra o coppia" : "Etichetta (facoltativa)"}</span>
                     <input
                       className="h-11 w-full rounded-xl border border-white/10 bg-white/[.055] px-3 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
                       value={participant.teamName}
                       onChange={(event) => updateParticipant(participant.id, "teamName", event.target.value)}
-                      placeholder="Es. Lazio"
-                      aria-label={`Squadra partecipante ${index + 1}, facoltativa`}
+                      placeholder={format === "team-scoreboard" ? "Nome squadra o coppia" : "Squadra, colore, coppia…"}
+                      aria-label={format === "team-scoreboard" ? `Squadra o coppia del partecipante ${index + 1}` : `Etichetta partecipante ${index + 1}, facoltativa`}
                     />
                   </label>
                   <Button
@@ -264,14 +342,14 @@ export function CreateTournamentDialog({
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between gap-4">
-            <p className="text-xs leading-5 text-white/35">La squadra è utile per videogiochi o sport di squadra; lasciala vuota per calcio balilla e tornei individuali.</p>
-            <Button type="button" variant="secondary" size="sm" onClick={addParticipant} disabled={participantRows.length >= 16}>
+            <p className="text-xs leading-5 text-white/35">{format === "team-scoreboard" ? "Usa lo stesso nome per raggruppare le persone nella stessa squadra o coppia." : "L’etichetta può indicare una squadra, un personaggio, un colore o qualsiasi altro dettaglio utile."}</p>
+            <Button type="button" variant="secondary" size="sm" onClick={addParticipant} disabled={participantRows.length >= (format === "duel" ? 2 : 16)}>
               <Plus className="size-4" /> Aggiungi
             </Button>
           </div>
         </fieldset>
 
-        <div className="grid gap-4 rounded-2xl border border-white/8 bg-black/15 p-4 sm:grid-cols-2">
+        {format !== "duel" && format !== "scoreboard" && format !== "team-scoreboard" ? <div className="grid gap-4 rounded-2xl border border-white/8 bg-black/15 p-4 sm:grid-cols-2">
           {(format === "league" || format === "hybrid") && (
             <label>
               <FieldLabel>{format === "hybrid" ? "Partite nei gironi" : "Calendario"}</FieldLabel>
@@ -325,9 +403,14 @@ export function CreateTournamentDialog({
               </label>
             </>
           )}
-        </div>
+        </div> : null}
 
-        <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-white/8 bg-white/[.025] p-4">
+        <fieldset className="rounded-2xl border border-white/8 bg-black/15 p-4">
+          <FieldLabel>Regole di punteggio</FieldLabel>
+          <ScoringRulesFields format={format} rules={scoring} onChange={setScoring} />
+        </fieldset>
+
+        {format !== "duel" && format !== "scoreboard" && format !== "team-scoreboard" ? <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-white/8 bg-white/[.025] p-4">
           <span>
             <span className="flex items-center gap-2 text-sm font-medium text-white">
               <Sparkles className="size-4 text-lime-300" /> Sorteggio automatico
@@ -342,7 +425,7 @@ export function CreateTournamentDialog({
             checked={shuffle}
             onChange={(event) => setShuffle(event.target.checked)}
           />
-        </label>
+        </label> : null}
 
         {error ? (
           <p className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200" role="alert">

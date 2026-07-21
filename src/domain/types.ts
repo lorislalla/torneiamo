@@ -1,4 +1,10 @@
-export type TournamentFormat = "league" | "knockout" | "hybrid";
+export type TournamentFormat =
+  | "league"
+  | "duel"
+  | "knockout"
+  | "hybrid"
+  | "scoreboard"
+  | "team-scoreboard";
 
 export type TournamentStatus = "active" | "completed";
 
@@ -8,6 +14,7 @@ export interface Participant {
   id: string;
   name: string;
   teamName?: string;
+  score?: number;
   accent: string;
 }
 
@@ -41,6 +48,24 @@ export interface TournamentSettings {
   groupCount: number;
   qualifiersPerGroup: number;
   shuffleParticipants: boolean;
+  scoring: ScoringRules;
+}
+
+export type ScoreDirection = "higher" | "lower";
+
+export type TieBreaker =
+  | "headToHead"
+  | "scoreDifference"
+  | "scoreFor"
+  | "wins"
+  | "participantOrder";
+
+export interface ScoringRules {
+  winPoints: number;
+  drawPoints: number;
+  lossPoints: number;
+  scoreDirection: ScoreDirection;
+  tieBreakers: TieBreaker[];
 }
 
 export interface Tournament {

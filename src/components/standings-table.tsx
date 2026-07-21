@@ -10,7 +10,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { participantLabel } from "@/domain/participant-label";
-import type { Match, Participant, StandingRow } from "@/domain/types";
+import type { Match, Participant, ScoringRules, StandingRow } from "@/domain/types";
 import { calculateStandings } from "@/domain/tournament-engine";
 import { cn } from "@/lib/cn";
 import { PlayerMark } from "./ui";
@@ -33,10 +33,12 @@ export function StandingsTable({
   participants,
   matches,
   qualifiedCount = 0,
+  scoring,
 }: {
   participants: Participant[];
   matches: Match[];
   qualifiedCount?: number;
+  scoring: ScoringRules;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
     key: "points",
@@ -48,6 +50,7 @@ export function StandingsTable({
   const rows = calculateStandings(
     participants.map((participant) => participant.id),
     matches,
+    scoring,
   );
   const sortedRows = [...rows].sort((first, second) => {
     const comparison = compareRows(first, second, sort.key, participantById);
@@ -77,15 +80,15 @@ export function StandingsTable({
           <thead>
             <tr className="border-b border-white/8 text-left text-[11px] uppercase tracking-[0.12em] text-white/35">
               <SortableHeader label="#" sortKey="position" sort={sort} onSort={changeSort} className="w-14 px-3" />
-              <SortableHeader label="Persona / squadra" sortKey="participant" sort={sort} onSort={changeSort} align="left" className="px-2" />
+              <SortableHeader label="Partecipante" sortKey="participant" sort={sort} onSort={changeSort} align="left" className="px-2" />
               <SortableHeader label="Pt" sortKey="points" sort={sort} onSort={changeSort} className="px-3" />
               <SortableHeader label="G" sortKey="played" sort={sort} onSort={changeSort} />
               <SortableHeader label="V" sortKey="won" sort={sort} onSort={changeSort} />
               <SortableHeader label="N" sortKey="drawn" sort={sort} onSort={changeSort} />
               <SortableHeader label="P" sortKey="lost" sort={sort} onSort={changeSort} />
-              <SortableHeader label="GF" sortKey="goalsFor" sort={sort} onSort={changeSort} />
-              <SortableHeader label="GS" sortKey="goalsAgainst" sort={sort} onSort={changeSort} />
-              <SortableHeader label="DR" sortKey="goalDifference" sort={sort} onSort={changeSort} className="px-3" />
+              <SortableHeader label="PF" sortKey="goalsFor" sort={sort} onSort={changeSort} />
+              <SortableHeader label="PS" sortKey="goalsAgainst" sort={sort} onSort={changeSort} />
+              <SortableHeader label="DP" sortKey="goalDifference" sort={sort} onSort={changeSort} className="px-3" />
             </tr>
           </thead>
           <tbody>
@@ -141,11 +144,19 @@ export function StandingsTable({
         </table>
       </div>
       <div className="border-t border-white/8 px-4 py-3 text-xs text-white/35">
-        Tocca una colonna per ordinarla · 3 punti per vittoria · 1 per pareggio · spareggio ufficiale: scontri diretti, differenza reti, gol fatti
+        Vittoria {scoring.winPoints} · Pareggio {scoring.drawPoints} · Sconfitta {scoring.lossPoints} · spareggi: {scoring.tieBreakers.map((tieBreaker) => TIE_BREAKER_SHORT[tieBreaker]).join(" → ")}
       </div>
     </div>
   );
 }
+
+const TIE_BREAKER_SHORT = {
+  headToHead: "scontri diretti",
+  scoreDifference: "DP",
+  scoreFor: "PF",
+  wins: "vittorie",
+  participantOrder: "ordine di inserimento",
+} as const;
 
 function compareRows(
   first: StandingRow,

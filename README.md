@@ -5,9 +5,13 @@ Web app responsive e installabile per gestire tornei fino a 16 partecipanti, sin
 ## Funzionalità
 
 - Campionato a sola andata o andata e ritorno.
-- Classifica automatica con scontri diretti, differenza reti e gol fatti.
+- Campionato aperto per due partecipanti, senza un numero fisso di sfide.
+- Classifica automatica con scontri diretti, differenza punti e punti fatti.
 - Eliminazione diretta con sorteggio, bye e gare singole o A/R.
 - Gironi configurabili con playoff generati automaticamente.
+- Classifica libera con punteggi personalizzabili, inclusi valori negativi.
+- Classifica a squadre o coppie con punteggi individuali e totale condiviso.
+- Regole configurabili per punti, spareggi e ordinamento alto/basso.
 - Accesso passwordless tramite magic link Supabase.
 - Sincronizzazione Realtime con cache offline in `localStorage`.
 - Collaborazione tramite inviti monouso con ruoli proprietario, editor e sola lettura.
