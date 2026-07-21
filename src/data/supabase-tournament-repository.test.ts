@@ -119,6 +119,46 @@ describe("SupabaseTournamentRepository", () => {
     }));
   });
 
+  it("aggiorna il nome nella colonna e nel documento cloud", async () => {
+    const renamed = {
+      ...tournament,
+      name: "Fifa 27",
+      updatedAt: "2026-07-22T09:30:00.000Z",
+    };
+    const insert = vi.fn(async () => ({ error: null }));
+    const maybeSingle = vi.fn(async () => ({
+      data: { ...row, name: renamed.name, data: renamed as unknown as Json },
+      error: null,
+    }));
+    const update = vi.fn(() => ({
+      eq: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          select: vi.fn(() => ({ maybeSingle })),
+        })),
+      })),
+    }));
+    const from = vi.fn()
+      .mockReturnValueOnce({ insert })
+      .mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({ single: vi.fn(async () => ({ data: row, error: null })) })),
+        })),
+      })
+      .mockReturnValueOnce({ update });
+    const repository = new SupabaseTournamentRepository(
+      { from } as unknown as SupabaseClient<Database>,
+      "user-test",
+    );
+
+    await repository.save(tournament);
+    await repository.save(renamed);
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Fifa 27",
+      data: expect.objectContaining({ name: "Fifa 27" }),
+    }));
+  });
+
   it("non cancella la copia locale quando l'import cloud fallisce", async () => {
     await getLocalTournamentRepository().save(tournament);
     let tournamentQuery = 0;

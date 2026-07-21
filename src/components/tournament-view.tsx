@@ -36,6 +36,7 @@ import {
   setTournamentStatus,
   updateParticipantScore,
   updateMatchScore,
+  updateTournamentName,
   updateTournamentScoringRules,
 } from "@/domain/tournament-engine";
 import { cn } from "@/lib/cn";
@@ -580,12 +581,38 @@ function DetailsSection({
     createParticipantDrafts(tournament.participants),
   );
   const [participantError, setParticipantError] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(tournament.name);
+  const [nameError, setNameError] = useState("");
   const [editingRules, setEditingRules] = useState(false);
   const [scoringDraft, setScoringDraft] = useState<ScoringRules>(() => ({
     ...tournament.settings.scoring,
     tieBreakers: [...tournament.settings.scoring.tieBreakers],
   }));
   const [scoringError, setScoringError] = useState("");
+
+  function startEditingName() {
+    setNameDraft(tournament.name);
+    setNameError("");
+    setEditingName(true);
+  }
+
+  function cancelEditingName() {
+    setNameDraft(tournament.name);
+    setNameError("");
+    setEditingName(false);
+  }
+
+  function saveName() {
+    if (!nameDraft.trim()) {
+      setNameError("Il nome del torneo è obbligatorio.");
+      return;
+    }
+    const renamedTournament = updateTournamentName(tournament, nameDraft);
+    if (renamedTournament !== tournament) onUpdate(renamedTournament);
+    setNameError("");
+    setEditingName(false);
+  }
 
   function startEditingParticipants() {
     setParticipantDrafts(createParticipantDrafts(tournament.participants));
@@ -702,7 +729,48 @@ function DetailsSection({
   return (
     <div className="grid gap-5 lg:grid-cols-[1.3fr_.7fr]">
       <section className="rounded-3xl border border-white/8 bg-white/[.025] p-5 sm:p-7">
-        <h2 className="text-xl font-medium text-white">Regole del torneo</h2>
+        <h2 className="text-xl font-medium text-white">Dettagli del torneo</h2>
+        <div className="mt-6 rounded-2xl border border-lime-300/10 bg-lime-300/[.035] p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-lime-200/70">Nome del torneo</p>
+              {!editingName ? (
+                <p className="mt-2 truncate text-lg font-medium text-white">{tournament.name}</p>
+              ) : null}
+            </div>
+            {canEdit && !editingName ? (
+              <Button type="button" variant="ghost" size="sm" onClick={startEditingName}>
+                <Pencil className="size-3.5" /> Modifica
+              </Button>
+            ) : null}
+          </div>
+          {editingName ? (
+            <div className="mt-3">
+              <label>
+                <span className="sr-only">Nuovo nome del torneo</span>
+                <input
+                  autoFocus
+                  className="h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
+                  value={nameDraft}
+                  onChange={(event) => setNameDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") saveName();
+                    if (event.key === "Escape") cancelEditingName();
+                  }}
+                />
+              </label>
+              {nameError ? <p className="mt-2 text-xs text-red-200" role="alert">{nameError}</p> : null}
+              <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="ghost" size="sm" onClick={cancelEditingName}>
+                  <X className="size-4" /> Annulla
+                </Button>
+                <Button type="button" size="sm" onClick={saveName}>
+                  <Check className="size-4" /> Salva nome
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <Detail label="Formato" value={FORMAT_LABELS[tournament.format]} />
           <Detail label="Partecipanti" value={`${tournament.participants.length} / 16`} />

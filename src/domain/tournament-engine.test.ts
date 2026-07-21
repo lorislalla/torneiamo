@@ -24,6 +24,7 @@ import {
   tournamentProgress,
   updateMatchScore,
   updateParticipantScore,
+  updateTournamentName,
   updateTournamentScoringRules,
 } from "./tournament-engine";
 
@@ -636,6 +637,24 @@ describe("ciclo di vita dei tornei", () => {
       });
       expect(tournament.status).toBe("active");
       expect(tournament.completedAt).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rinomina il torneo preservando i dati e aggiornando la modifica", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-22T09:30:00.000Z"));
+      const tournament = create("scoreboard", ["A", "B"]);
+      const renamed = updateTournamentName(tournament, "  Fifa 27  ");
+
+      expect(renamed).not.toBe(tournament);
+      expect(renamed.name).toBe("Fifa 27");
+      expect(renamed.updatedAt).toBe("2026-07-22T09:30:00.000Z");
+      expect(renamed.participants).toBe(tournament.participants);
+      expect(updateTournamentName(renamed, "   ")).toBe(renamed);
+      expect(updateTournamentName(renamed, "Fifa 27")).toBe(renamed);
     } finally {
       vi.useRealTimers();
     }

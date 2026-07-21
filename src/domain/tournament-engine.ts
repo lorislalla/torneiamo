@@ -241,6 +241,19 @@ export function updateParticipantScore(
   };
 }
 
+export function updateTournamentName(
+  tournament: Tournament,
+  name: string,
+): Tournament {
+  const trimmedName = name.trim();
+  if (!trimmedName || trimmedName === tournament.name) return tournament;
+  return {
+    ...tournament,
+    name: trimmedName,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function updateTournamentScoringRules(
   tournament: Tournament,
   scoring: ScoringRules,

@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { createTournament, setTournamentStatus } from "@/domain/tournament-engine";
+import {
+  createTournament,
+  setTournamentStatus,
+  updateTournamentName,
+} from "@/domain/tournament-engine";
 import { getLocalTournamentRepository } from "./local-storage-tournament-repository";
 
 beforeEach(() => {
@@ -24,11 +28,13 @@ describe("LocalStorageTournamentRepository", () => {
       participants: [{ name: "Loris" }, { name: "Marta" }],
     });
     const completed = setTournamentStatus(created, "completed");
+    const renamed = updateTournamentName(completed, "Fifa 27");
     const repository = getLocalTournamentRepository();
 
-    await repository.save(completed);
+    await repository.save(renamed);
     const [restored] = await repository.list();
 
+    expect(restored.name).toBe("Fifa 27");
     expect(restored.createdAt).toBe(created.createdAt);
     expect(restored.completedAt).toBe(completed.completedAt);
   });
