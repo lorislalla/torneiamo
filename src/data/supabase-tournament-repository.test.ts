@@ -89,6 +89,36 @@ describe("SupabaseTournamentRepository", () => {
     expect(repository.roleFor(tournament.id)).toBe("owner");
   });
 
+  it("include la data di conclusione nel documento cloud", async () => {
+    const completedAt = "2026-07-21T14:00:00.000Z";
+    const completed = { ...tournament, status: "completed", completedAt } as Tournament;
+    const completedRow = {
+      ...row,
+      status: "completed",
+      data: completed as unknown as Json,
+    };
+    const insert = vi.fn(async () => ({ error: null }));
+    const from = vi.fn()
+      .mockReturnValueOnce({ insert })
+      .mockReturnValueOnce({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            single: vi.fn(async () => ({ data: completedRow, error: null })),
+          })),
+        })),
+      });
+    const repository = new SupabaseTournamentRepository(
+      { from } as unknown as SupabaseClient<Database>,
+      "user-test",
+    );
+
+    await repository.save(completed);
+
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ completedAt }),
+    }));
+  });
+
   it("non cancella la copia locale quando l'import cloud fallisce", async () => {
     await getLocalTournamentRepository().save(tournament);
     let tournamentQuery = 0;

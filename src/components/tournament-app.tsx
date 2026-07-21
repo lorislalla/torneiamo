@@ -15,6 +15,7 @@ import {
   Menu,
   Plus,
   RefreshCw,
+  Search,
   Smartphone,
   Swords,
   Trophy,
@@ -23,6 +24,12 @@ import {
   X,
 } from "lucide-react";
 import type { Tournament } from "@/domain/types";
+import {
+  formatTournamentDate,
+  searchAndSortTournaments,
+  tournamentCompletedAt,
+  type TournamentSortOrder,
+} from "@/domain/tournament-catalog";
 import { getLocalTournamentRepository } from "@/data/local-storage-tournament-repository";
 import {
   SupabaseTournamentRepository,
@@ -32,6 +39,7 @@ import type { TournamentRepository, TournamentRole } from "@/data/tournament-rep
 import { hashInviteCode } from "@/lib/invite-code";
 import { cn } from "@/lib/cn";
 import { createClient } from "@/lib/supabase/client";
+import { preserveUserIdentity } from "@/lib/supabase/auth-user-state";
 import { AuthDialog } from "./auth-dialog";
 import { CollaborationDialog } from "./collaboration-dialog";
 import { CreateTournamentDialog } from "./create-tournament-dialog";
@@ -59,6 +67,8 @@ export function TournamentApp() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<TournamentSortOrder>("updated-desc");
   const { installable, install } = usePwaInstallation();
   const claimedInvite = useRef("");
 
@@ -88,11 +98,14 @@ export function TournamentApp() {
     let active = true;
     void supabase.auth.getUser().then(({ data }) => {
       if (!active) return;
-      setUser(data.user ?? null);
+      setUser((current) => preserveUserIdentity(current, data.user ?? null));
       setAuthReady(true);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      const incomingUser = session?.user ?? null;
+      setUser((current) => event === "USER_UPDATED"
+        ? incomingUser
+        : preserveUserIdentity(current, incomingUser));
       setAuthReady(true);
     });
     return () => {
@@ -176,6 +189,10 @@ export function TournamentApp() {
   }, [notice]);
 
   const activeTournament = tournaments.find((tournament) => tournament.id === activeId);
+  const visibleTournaments = useMemo(
+    () => searchAndSortTournaments(tournaments, catalogQuery, sortOrder),
+    [catalogQuery, sortOrder, tournaments],
+  );
   const activeRole = activeTournament ? repository.roleFor(activeTournament.id) : "owner";
   const canEdit = !user || activeRole !== "viewer";
 
@@ -253,10 +270,40 @@ export function TournamentApp() {
 
           <div className="mt-7 lg:max-h-[calc(100dvh-300px)] lg:overflow-y-auto">
             <p className="px-2 text-[10px] font-semibold uppercase tracking-[.17em] text-white/25">I tuoi tornei</p>
+            {tournaments.length > 0 ? (
+              <div className="mt-3 space-y-2 px-1">
+                <label className="relative block">
+                  <span className="sr-only">Cerca tornei o partecipanti</span>
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-white/40" />
+                  <input
+                    type="search"
+                    value={catalogQuery}
+                    onChange={(event) => setCatalogQuery(event.target.value)}
+                    placeholder="Torneo o partecipante"
+                    className="h-10 w-full rounded-xl border border-white/10 bg-black/20 pl-9 pr-3 text-xs text-white outline-none placeholder:text-white/35 focus:border-lime-300/40"
+                  />
+                </label>
+                <label className="block">
+                  <span className="sr-only">Ordina tornei</span>
+                  <select
+                    value={sortOrder}
+                    onChange={(event) => setSortOrder(event.target.value as TournamentSortOrder)}
+                    className="h-9 w-full rounded-xl border border-white/10 bg-[#102019] px-3 text-xs text-white/70 outline-none focus:border-lime-300/40"
+                  >
+                    <option value="updated-desc">Ultima modifica</option>
+                    <option value="created-desc">Creati di recente</option>
+                    <option value="created-asc">Creati meno di recente</option>
+                    <option value="completed-desc">Conclusi di recente</option>
+                  </select>
+                </label>
+              </div>
+            ) : null}
             <nav className="mt-2 space-y-1" aria-label="Tornei salvati">
               {tournaments.length === 0 ? (
                 <p className="px-2 py-4 text-xs leading-5 text-white/30">I tornei che crei o condividono con te compariranno qui.</p>
-              ) : tournaments.map((tournament) => (
+              ) : visibleTournaments.length === 0 ? (
+                <p className="px-2 py-4 text-xs leading-5 text-white/45">Nessun torneo corrisponde alla ricerca.</p>
+              ) : visibleTournaments.map((tournament) => (
                 <button
                   key={tournament.id}
                   type="button"
@@ -271,7 +318,12 @@ export function TournamentApp() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{tournament.name}</span>
-                    <span className="mt-0.5 block text-[10px] uppercase tracking-[.1em] text-white/25">{tournament.status === "completed" ? "Completato" : "In corso"}</span>
+                    <span className="mt-1 block text-[10px] leading-4 text-white/45">
+                      Creato {formatTournamentDate(tournament.createdAt)}
+                      {tournament.status === "completed"
+                        ? ` · Fine ${formatTournamentDate(tournamentCompletedAt(tournament) ?? tournament.updatedAt)}`
+                        : " · In corso"}
+                    </span>
                   </span>
                   {user && repository.roleFor(tournament.id) !== "owner" ? <Users className="size-3.5 text-white/25" /> : null}
                 </button>

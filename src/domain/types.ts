@@ -75,6 +75,7 @@ export interface Tournament {
   status: TournamentStatus;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
   participants: Participant[];
   settings: TournamentSettings;
   groups: TournamentGroup[];

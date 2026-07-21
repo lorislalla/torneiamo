@@ -616,6 +616,31 @@ describe("ciclo di vita dei tornei", () => {
     });
   });
 
+  it("registra la data di fine automatica e la rimuove quando il torneo viene riaperto", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-21T10:00:00.000Z"));
+      let tournament = create("league", ["A", "B"]);
+      vi.setSystemTime(new Date("2026-07-21T12:00:00.000Z"));
+      tournament = updateMatchScore(tournament, tournament.matches[0].id, {
+        homeScore: 2,
+        awayScore: 1,
+      });
+
+      expect(tournament.completedAt).toBe("2026-07-21T12:00:00.000Z");
+
+      vi.setSystemTime(new Date("2026-07-21T13:00:00.000Z"));
+      tournament = updateMatchScore(tournament, tournament.matches[0].id, {
+        homeScore: null,
+        awayScore: null,
+      });
+      expect(tournament.status).toBe("active");
+      expect(tournament.completedAt).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("gestisce una serie a due aperta, alternando casa e trasferta", () => {
     let tournament = create("duel", ["A", "B"]);
     const [a, b] = tournament.participants;
@@ -996,6 +1021,18 @@ describe("compatibilità, immutabilità e funzioni di supporto", () => {
 
     expect(normalized.participants.every((item) => item.score === 0)).toBe(true);
     expect(normalized.settings.scoring).toEqual(DEFAULT_SCORING_RULES);
+  });
+
+  it("ricostruisce la data di fine dei tornei storici conclusi", () => {
+    const tournament = create("scoreboard", ["A", "B"]);
+    const normalized = normalizeTournament({
+      ...tournament,
+      status: "completed",
+      updatedAt: "2026-06-15T20:30:00.000Z",
+      completedAt: undefined,
+    });
+
+    expect(normalized.completedAt).toBe("2026-06-15T20:30:00.000Z");
   });
 
   it("deduplica gli spareggi salvati e completa quelli mancanti", () => {

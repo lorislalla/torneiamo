@@ -15,6 +15,8 @@ Web app responsive e installabile per gestire tornei fino a 16 partecipanti, sin
 - Accesso passwordless tramite magic link Supabase.
 - Sincronizzazione Realtime con cache offline in `localStorage`.
 - Collaborazione tramite inviti monouso con ruoli proprietario, editor e sola lettura.
+- Archivio ricercabile per nome del torneo, partecipanti ed etichette, con ordinamento cronologico.
+- Date di creazione e conclusione persistite e visibili per distinguere edizioni omonime.
 - PWA installabile con cache offline e avviso esplicito per ogni nuova versione.
 
 ## Sviluppo locale

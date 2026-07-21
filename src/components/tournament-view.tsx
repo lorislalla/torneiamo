@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import type { MatchScoreUpdate, Participant, ScoringRules, Tournament } from "@/domain/types";
+import { formatTournamentDate, tournamentCompletedAt } from "@/domain/tournament-catalog";
 import { participantLabel } from "@/domain/participant-label";
 import {
   calculateStandings,
@@ -105,6 +106,7 @@ export function TournamentView({
     )
     .slice(0, 3);
   const openEnded = tournament.format === "duel" || tournament.format === "scoreboard" || tournament.format === "team-scoreboard";
+  const completedAt = tournamentCompletedAt(tournament);
 
   const tabs: Array<{ id: TabId; label: string; icon: typeof Gauge; hidden?: boolean }> = [
     { id: "overview", label: "Panoramica", icon: Gauge },
@@ -153,6 +155,18 @@ export function TournamentView({
             <h1 className="text-3xl font-medium tracking-[-.04em] text-white sm:text-5xl">
               {tournament.name}
             </h1>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50">
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarDays className="size-3.5 text-lime-300/80" />
+                Creato <time dateTime={tournament.createdAt}>{formatTournamentDate(tournament.createdAt)}</time>
+              </span>
+              {completedAt ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3.5 text-lime-300/80" />
+                  Concluso <time dateTime={completedAt}>{formatTournamentDate(completedAt)}</time>
+                </span>
+              ) : null}
+            </div>
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/45">
               {tournament.participants.length} partecipanti · {tournament.format === "scoreboard"
                 ? "punteggi liberi"

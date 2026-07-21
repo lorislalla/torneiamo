@@ -205,11 +205,11 @@ export function updateMatchScore(
     tournament.format === "scoreboard" ||
     tournament.format === "team-scoreboard"
   ) {
-    next.status = tournament.status;
+    next = withTournamentStatus(next, tournament.status);
   } else if (isTournamentComplete(next)) {
-    next.status = "completed";
+    next = withTournamentStatus(next, "completed");
   } else {
-    next.status = "active";
+    next = withTournamentStatus(next, "active");
   }
 
   return next;
@@ -264,7 +264,10 @@ export function updateTournamentScoringRules(
     next.format !== "scoreboard" &&
     next.format !== "team-scoreboard"
   ) {
-    next.status = isTournamentComplete(next) ? "completed" : "active";
+    next = withTournamentStatus(
+      next,
+      isTournamentComplete(next) ? "completed" : "active",
+    );
   }
 
   return next;
@@ -286,7 +289,7 @@ export function normalizeTournament(tournament: Tournament): Tournament {
     tieBreakers,
   };
 
-  return {
+  return withTournamentStatus({
     ...tournament,
     participants: tournament.participants.map((participant) =>
       (tournament.format === "scoreboard" || tournament.format === "team-scoreboard") &&
@@ -299,7 +302,7 @@ export function normalizeTournament(tournament: Tournament): Tournament {
       ...tournament.settings,
       scoring,
     },
-  };
+  }, tournament.status);
 }
 
 export function setTournamentStatus(
@@ -319,12 +322,26 @@ export function setTournamentStatus(
     }
   }
 
-  return {
+  const updatedAt = new Date().toISOString();
+  return withTournamentStatus({
     ...tournament,
     matches,
     status,
-    updatedAt: new Date().toISOString(),
-  };
+    updatedAt,
+  }, status);
+}
+
+function withTournamentStatus(
+  tournament: Tournament,
+  status: Tournament["status"],
+): Tournament {
+  const next = { ...tournament, status };
+  if (status === "completed") {
+    next.completedAt = tournament.completedAt ?? tournament.updatedAt;
+  } else {
+    delete next.completedAt;
+  }
+  return next;
 }
 
 export function generateRoundRobin(
