@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Torneiamo — Gestione tornei",
+    name: "Torneiamo.",
     short_name: "Torneiamo",
     description: "Crea tornei, inserisci risultati e segui classifiche e tabelloni automatici.",
     start_url: "/",

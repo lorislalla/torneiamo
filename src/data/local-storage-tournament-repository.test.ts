@@ -2,8 +2,11 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  addScoreboardRound,
+  completeScoreboardTournament,
   createTournament,
   setTournamentStatus,
+  updateScoreboardRoundScore,
   updateTournamentName,
 } from "@/domain/tournament-engine";
 import { getLocalTournamentRepository } from "./local-storage-tournament-repository";
@@ -37,5 +40,48 @@ describe("LocalStorageTournamentRepository", () => {
     expect(restored.name).toBe("Fifa 27");
     expect(restored.createdAt).toBe(created.createdAt);
     expect(restored.completedAt).toBe(completed.completedAt);
+  });
+
+  it("ripristina round, punteggi e spareggio manuale", async () => {
+    let tournament = createTournament({
+      name: "Minigolf",
+      format: "scoreboard",
+      participants: [{ name: "Loris" }, { name: "Marta" }],
+      settings: {
+        scoring: {
+          winPoints: 3,
+          drawPoints: 1,
+          lossPoints: 0,
+          scoreDirection: "lower",
+          scoreboardAggregation: "totalScore",
+          tieBreakers: ["headToHead", "scoreDifference", "scoreFor"],
+        },
+      },
+    });
+    tournament = addScoreboardRound(tournament);
+    for (const round of tournament.scoreboardRounds) {
+      for (const participant of tournament.participants) {
+        tournament = updateScoreboardRoundScore(
+          tournament,
+          round.id,
+          participant.id,
+          4,
+        );
+      }
+    }
+    tournament = completeScoreboardTournament(
+      tournament,
+      tournament.participants[1].id,
+      "Spareggio alla buca 19",
+    );
+    const repository = getLocalTournamentRepository();
+
+    await repository.save(tournament);
+    const [restored] = await repository.list();
+
+    expect(restored.scoreboardRounds).toEqual(tournament.scoreboardRounds);
+    expect(restored.winnerOverrideId).toBe(tournament.participants[1].id);
+    expect(restored.winnerOverrideNote).toBe("Spareggio alla buca 19");
+    expect(restored.status).toBe("completed");
   });
 });

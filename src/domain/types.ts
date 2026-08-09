@@ -53,6 +53,8 @@ export interface TournamentSettings {
 
 export type ScoreDirection = "higher" | "lower";
 
+export type ScoreboardAggregation = "totalScore" | "roundWins";
+
 export type TieBreaker =
   | "headToHead"
   | "scoreDifference"
@@ -65,7 +67,14 @@ export interface ScoringRules {
   drawPoints: number;
   lossPoints: number;
   scoreDirection: ScoreDirection;
+  scoreboardAggregation: ScoreboardAggregation;
   tieBreakers: TieBreaker[];
+}
+
+export interface ScoreboardRound {
+  id: string;
+  label: string;
+  scores: Record<string, number>;
 }
 
 export interface Tournament {
@@ -78,6 +87,9 @@ export interface Tournament {
   completedAt?: string;
   participants: Participant[];
   settings: TournamentSettings;
+  scoreboardRounds: ScoreboardRound[];
+  winnerOverrideId?: string;
+  winnerOverrideNote?: string;
   groups: TournamentGroup[];
   bracketSeedIds: string[];
   matches: Match[];

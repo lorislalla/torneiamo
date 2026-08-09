@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Torneiamo — Gestione tornei",
+  title: "Torneiamo.",
   description: "Crea tornei, inserisci risultati e segui classifiche e tabelloni automatici.",
   applicationName: "Torneiamo",
   appleWebApp: {

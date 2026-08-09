@@ -26,15 +26,19 @@ import type { MatchScoreUpdate, Participant, ScoringRules, Tournament } from "@/
 import { formatTournamentDate, tournamentCompletedAt } from "@/domain/tournament-catalog";
 import { participantLabel } from "@/domain/participant-label";
 import {
+  addScoreboardRound,
   calculateStandings,
   calculateTeamStandings,
+  completeScoreboardTournament,
   getChampionId,
   getMatchWinner,
+  getScoreboardLeaderIds,
   isMatchPlayed,
   tournamentProgress,
-  rankScoreboardParticipants,
+  rankTournamentScoreboardParticipants,
   setTournamentStatus,
   updateParticipantScore,
+  updateScoreboardRoundScore,
   updateMatchScore,
   updateTournamentName,
   updateTournamentScoringRules,
@@ -46,7 +50,7 @@ import { ScoreboardTable } from "./scoreboard-table";
 import { ScoringRulesFields, TIE_BREAKER_LABELS } from "./scoring-rules-fields";
 import { StandingsTable } from "./standings-table";
 import { TeamScoreboardTable } from "./team-scoreboard-table";
-import { Button, PlayerMark } from "./ui";
+import { Button, Modal, PlayerMark } from "./ui";
 
 type TabId = "overview" | "matches" | "standings" | "bracket" | "settings";
 
@@ -133,6 +137,14 @@ export function TournamentView({
 
   function updateScoreboard(participantId: string, score: number) {
     onUpdate(updateParticipantScore(tournament, participantId, score));
+  }
+
+  function updateScoreboardRound(roundId: string, participantId: string, score: number) {
+    onUpdate(updateScoreboardRoundScore(tournament, roundId, participantId, score));
+  }
+
+  function addRound() {
+    onUpdate(addScoreboardRound(tournament));
   }
 
   return (
@@ -232,6 +244,8 @@ export function TournamentView({
           nextMatches={nextMatches}
           onScore={updateScore}
           onParticipantScore={updateScoreboard}
+          onScoreboardRoundScore={updateScoreboardRound}
+          onAddScoreboardRound={addRound}
           onNavigate={setActiveTab}
           readOnly={!canEdit}
           isSynced={isSynced}
@@ -241,7 +255,13 @@ export function TournamentView({
         <MatchesSection tournament={tournament} onScore={updateScore} readOnly={!canEdit} />
       ) : null}
       {activeTab === "standings" ? (
-        <StandingsSection tournament={tournament} onScore={updateScoreboard} readOnly={!canEdit} />
+        <StandingsSection
+          tournament={tournament}
+          onScore={updateScoreboard}
+          onScoreboardRoundScore={updateScoreboardRound}
+          onAddScoreboardRound={addRound}
+          readOnly={!canEdit}
+        />
       ) : null}
       {activeTab === "bracket" ? (
         <BracketView
@@ -273,6 +293,8 @@ function Overview({
   nextMatches,
   onScore,
   onParticipantScore,
+  onScoreboardRoundScore,
+  onAddScoreboardRound,
   onNavigate,
   readOnly,
   isSynced,
@@ -282,6 +304,8 @@ function Overview({
   nextMatches: Tournament["matches"];
   onScore: (matchId: string, score: MatchScoreUpdate) => void;
   onParticipantScore: (participantId: string, score: number) => void;
+  onScoreboardRoundScore: (roundId: string, participantId: string, score: number) => void;
+  onAddScoreboardRound: () => void;
   onNavigate: (tab: TabId) => void;
   readOnly: boolean;
   isSynced: boolean;
@@ -299,16 +323,13 @@ function Overview({
         tournament.settings.scoring,
       )
     : [];
-  const scoreboardLeader = rankScoreboardParticipants(
-    tournament.participants,
-    tournament.settings.scoring.scoreDirection,
-  )[0];
+  const scoreboardLeader = rankTournamentScoreboardParticipants(tournament)[0];
   const teamLeader = calculateTeamStandings(
     tournament.participants,
     tournament.settings.scoring.scoreDirection,
   )[0];
   const leader = tournament.format === "scoreboard"
-    ? scoreboardLeader
+    ? champion ?? scoreboardLeader
     : tournament.participants.find(
         (participant) => participant.id === standings[0]?.participantId,
       );
@@ -332,6 +353,11 @@ function Overview({
                   {champion.teamName}
                 </p>
               ) : null}
+              {champion && tournament.winnerOverrideNote ? (
+                <p className="mt-3 max-w-2xl rounded-xl border border-white/8 bg-black/15 px-3 py-2 text-sm leading-6 text-white/60">
+                  {tournament.winnerOverrideNote}
+                </p>
+              ) : null}
               <p className="mt-1 text-sm text-white/45">Torneo completato. Il titolo è ufficiale.</p>
             </div>
           </div>
@@ -342,9 +368,9 @@ function Overview({
         <StatCard icon={Users} label="Partecipanti" value={String(tournament.participants.length)} note="Massimo 16" />
         <StatCard
           icon={tournament.format === "scoreboard" ? ChartNoAxesColumnIncreasing : tournament.format === "team-scoreboard" ? UsersRound : CalendarDays}
-          label={tournament.format === "scoreboard" ? "Punteggio migliore" : tournament.format === "team-scoreboard" ? "Totale migliore" : "Sfide decise"}
+          label={tournament.format === "scoreboard" ? tournament.settings.scoring.scoreboardAggregation === "roundWins" ? "Round vinti" : "Punteggio migliore" : tournament.format === "team-scoreboard" ? "Totale migliore" : "Sfide decise"}
           value={tournament.format === "scoreboard" ? String(scoreboardLeader?.score ?? 0) : tournament.format === "team-scoreboard" ? String(teamLeader?.total ?? 0) : tournament.format === "duel" ? String(progress.played) : `${progress.played}/${progress.total}`}
-          note={tournament.format === "scoreboard" || tournament.format === "team-scoreboard" ? `Vince il valore ${tournament.settings.scoring.scoreDirection === "higher" ? "più alto" : "più basso"}` : tournament.format === "duel" ? "Senza limite prestabilito" : `${progress.percentage}% completato`}
+          note={tournament.format === "scoreboard" && tournament.settings.scoring.scoreboardAggregation === "roundWins" ? "Conta ogni round vinto" : tournament.format === "scoreboard" || tournament.format === "team-scoreboard" ? `Vince il valore ${tournament.settings.scoring.scoreDirection === "higher" ? "più alto" : "più basso"}` : tournament.format === "duel" ? "Senza limite prestabilito" : `${progress.percentage}% completato`}
         />
         <StatCard
           icon={Trophy}
@@ -362,10 +388,10 @@ function Overview({
             <h2 className="mt-1 text-xl font-medium tracking-tight text-white">Classifica attuale</h2>
           </div>
           <ScoreboardTable
-            participants={tournament.participants}
-            onScore={onParticipantScore}
+            tournament={tournament}
+            onScore={onScoreboardRoundScore}
+            onAddRound={onAddScoreboardRound}
             readOnly={readOnly}
-            scoreDirection={tournament.settings.scoring.scoreDirection}
           />
         </section>
       ) : tournament.format === "team-scoreboard" ? (
@@ -510,19 +536,23 @@ function MatchesSection({
 function StandingsSection({
   tournament,
   onScore,
+  onScoreboardRoundScore,
+  onAddScoreboardRound,
   readOnly,
 }: {
   tournament: Tournament;
   onScore: (participantId: string, score: number) => void;
+  onScoreboardRoundScore: (roundId: string, participantId: string, score: number) => void;
+  onAddScoreboardRound: () => void;
   readOnly: boolean;
 }) {
   if (tournament.format === "scoreboard") {
     return (
       <ScoreboardTable
-        participants={tournament.participants}
-        onScore={onScore}
+        tournament={tournament}
+        onScore={onScoreboardRoundScore}
+        onAddRound={onAddScoreboardRound}
         readOnly={readOnly}
-        scoreDirection={tournament.settings.scoring.scoreDirection}
       />
     );
   }
@@ -590,6 +620,13 @@ function DetailsSection({
     tieBreakers: [...tournament.settings.scoring.tieBreakers],
   }));
   const [scoringError, setScoringError] = useState("");
+  const [winnerDialogOpen, setWinnerDialogOpen] = useState(false);
+  const [winnerDraft, setWinnerDraft] = useState("");
+  const [winnerNoteDraft, setWinnerNoteDraft] = useState("");
+  const scoreboardLeaderIds = getScoreboardLeaderIds(tournament);
+  const tiedLeaders = tournament.participants.filter((participant) =>
+    scoreboardLeaderIds.includes(participant.id),
+  );
 
   function startEditingName() {
     setNameDraft(tournament.name);
@@ -717,6 +754,30 @@ function DetailsSection({
     setEditingRules(false);
   }
 
+  function toggleTournamentStatus() {
+    if (tournament.status === "completed") {
+      onUpdate(setTournamentStatus(tournament, "active"));
+      return;
+    }
+    if (tournament.format === "scoreboard" && scoreboardLeaderIds.length > 1) {
+      setWinnerDraft("");
+      setWinnerNoteDraft("");
+      setWinnerDialogOpen(true);
+      return;
+    }
+    onUpdate(setTournamentStatus(tournament, "completed"));
+  }
+
+  function confirmScoreboardWinner() {
+    if (!winnerDraft) return;
+    onUpdate(completeScoreboardTournament(
+      tournament,
+      winnerDraft,
+      winnerNoteDraft,
+    ));
+    setWinnerDialogOpen(false);
+  }
+
   function downloadBackup() {
     const blob = new Blob([JSON.stringify(tournament, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -727,6 +788,7 @@ function DetailsSection({
     URL.revokeObjectURL(url);
   }
   return (
+    <>
     <div className="grid gap-5 lg:grid-cols-[1.3fr_.7fr]">
       <section className="rounded-3xl border border-white/8 bg-white/[.025] p-5 sm:p-7">
         <h2 className="text-xl font-medium text-white">Dettagli del torneo</h2>
@@ -777,10 +839,12 @@ function DetailsSection({
           {tournament.format === "league" ? <Detail label="Calendario" value={tournament.settings.leagueLegs === 2 ? "Andata e ritorno" : "Sola andata"} /> : null}
           {tournament.format === "duel" ? <Detail label="Durata" value="Serie libera, senza limite di sfide" /> : null}
           {tournament.format === "scoreboard" ? <Detail label="Punteggi" value="Liberi, anche con valori negativi" /> : null}
+          {tournament.format === "scoreboard" ? <Detail label="Calcolo classifica" value={tournament.settings.scoring.scoreboardAggregation === "roundWins" ? "Numero di round vinti" : "Somma dei punteggi"} /> : null}
           {tournament.format === "team-scoreboard" ? <Detail label="Punteggi" value="Individuali con totale di squadra" /> : null}
           {tournament.format === "knockout" || tournament.format === "hybrid" ? <Detail label="Turni a eliminazione" value={tournament.settings.knockoutLegs === 2 ? "Andata e ritorno" : "Gara singola"} /> : null}
           {tournament.format === "hybrid" ? <Detail label="Gironi" value={`${tournament.settings.groupCount} · ${tournament.settings.qualifiersPerGroup} qualificati`} /> : null}
           <Detail label="Punteggio migliore" value={tournament.settings.scoring.scoreDirection === "higher" ? "Più alto" : "Più basso"} />
+          {tournament.winnerOverrideNote ? <Detail label="Nota sul vincitore" value={tournament.winnerOverrideNote} /> : null}
           {tournament.format === "league" || tournament.format === "duel" || tournament.format === "hybrid" ? <Detail label="Punti V / N / P" value={`${tournament.settings.scoring.winPoints} / ${tournament.settings.scoring.drawPoints} / ${tournament.settings.scoring.lossPoints}`} /> : null}
           {tournament.format === "league" || tournament.format === "duel" || tournament.format === "hybrid" ? <Detail label="Spareggi classifica" value={tournament.settings.scoring.tieBreakers.map((tieBreaker) => TIE_BREAKER_LABELS[tieBreaker]).join(" → ")} /> : null}
         </div>
@@ -905,10 +969,7 @@ function DetailsSection({
             <Button
               className="mt-4 w-full"
               variant={tournament.status === "completed" ? "secondary" : "primary"}
-              onClick={() => onUpdate(setTournamentStatus(
-                tournament,
-                tournament.status === "completed" ? "active" : "completed",
-              ))}
+              onClick={toggleTournamentStatus}
             >
               <SquareCheckBig className="size-4" />
               {tournament.status === "completed" ? "Riapri torneo" : "Concludi torneo"}
@@ -929,6 +990,67 @@ function DetailsSection({
         </div> : null}
       </aside>
     </div>
+    <Modal
+      open={winnerDialogOpen}
+      onClose={() => setWinnerDialogOpen(false)}
+      title="Scegli il vincitore"
+      description="Il primo posto è in parità. Indica chi ha vinto lo spareggio."
+    >
+      <div className="space-y-5 p-5 sm:p-7">
+        <fieldset>
+          <legend className="mb-3 text-xs font-medium uppercase tracking-[.16em] text-white/45">
+            Vincitore del torneo
+          </legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {tiedLeaders.map((participant) => (
+              <label
+                key={participant.id}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition",
+                  winnerDraft === participant.id
+                    ? "border-lime-300/45 bg-lime-300/[.08]"
+                    : "border-white/10 bg-white/[.025] hover:border-white/20",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="scoreboard-winner"
+                  value={participant.id}
+                  checked={winnerDraft === participant.id}
+                  onChange={() => setWinnerDraft(participant.id)}
+                  className="size-4 accent-lime-300"
+                />
+                <PlayerMark name={participant.name} accent={participant.accent} size="sm" />
+                <span className="min-w-0 truncate text-sm font-medium text-white">
+                  {participantLabel(participant)}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <label className="block">
+          <span className="mb-2 block text-xs font-medium uppercase tracking-[.16em] text-white/45">
+            Nota facoltativa
+          </span>
+          <textarea
+            rows={3}
+            value={winnerNoteDraft}
+            onChange={(event) => setWinnerNoteDraft(event.target.value)}
+            className="w-full resize-y rounded-xl border border-white/10 bg-white/[.055] px-3 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/10"
+            placeholder="Es. Vittoria alla buca di spareggio"
+          />
+        </label>
+        <div className="flex flex-col-reverse gap-2 border-t border-white/8 pt-5 sm:flex-row sm:justify-end">
+          <Button type="button" variant="ghost" onClick={() => setWinnerDialogOpen(false)}>
+            Annulla
+          </Button>
+          <Button type="button" disabled={!winnerDraft} onClick={confirmScoreboardWinner}>
+            <Trophy className="size-4" /> Concludi torneo
+          </Button>
+        </div>
+      </div>
+    </Modal>
+    </>
   );
 }
 

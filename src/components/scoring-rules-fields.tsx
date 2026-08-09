@@ -49,6 +49,23 @@ export function ScoringRulesFields({
         </select>
       </label>
 
+      {format === "scoreboard" ? (
+        <label>
+          <FieldLabel>Calcolo classifica</FieldLabel>
+          <select
+            className="h-11 w-full rounded-xl border border-white/10 bg-[#14231c] px-3 text-sm text-white outline-none focus:border-lime-300/50"
+            value={rules.scoreboardAggregation}
+            onChange={(event) => onChange({
+              ...rules,
+              scoreboardAggregation: event.target.value as ScoringRules["scoreboardAggregation"],
+            })}
+          >
+            <option value="totalScore">Somma dei punteggi</option>
+            <option value="roundWins">Numero di round vinti</option>
+          </select>
+        </label>
+      ) : null}
+
       {usesStandings ? (
         <>
           <div className="grid grid-cols-3 gap-2 sm:col-span-2">

@@ -3,20 +3,29 @@ export function ScoreInput({
   participantName,
   readOnly,
   onCommit,
+  compact = false,
 }: {
   score: number;
   participantName: string;
   readOnly: boolean;
   onCommit: (score: number) => void;
+  compact?: boolean;
 }) {
   return (
     <input
       key={score}
-      type="number"
+      type="text"
       inputMode="numeric"
       disabled={readOnly}
-      className="h-11 w-20 rounded-xl border border-white/10 bg-black/25 px-2 text-center font-mono text-base font-semibold text-white outline-none transition focus:border-lime-300/55 focus:ring-2 focus:ring-lime-300/10 sm:w-24"
+      className={`h-11 rounded-xl border border-white/10 bg-black/25 px-2 text-center font-mono text-base font-semibold text-white outline-none transition focus:border-lime-300/55 focus:ring-2 focus:ring-lime-300/10 ${compact ? "w-20" : "w-20 sm:w-24"}`}
       defaultValue={score}
+      onFocus={(event) => event.currentTarget.select()}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.currentTarget.focus();
+        event.currentTarget.select();
+      }}
+      onClick={(event) => event.currentTarget.select()}
       onBlur={(event) => {
         const parsed = Number.parseInt(event.currentTarget.value, 10);
         if (Number.isNaN(parsed)) {

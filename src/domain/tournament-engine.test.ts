@@ -8,22 +8,27 @@ import type {
 import {
   calculateStandings,
   calculateTeamStandings,
+  completeScoreboardTournament,
   compareRankedScores,
   createTournament,
   DEFAULT_SCORING_RULES,
   generateBracket,
   generateRoundRobin,
   getChampionId,
+  getScoreboardLeaderIds,
   getMatchWinner,
   isMatchPlayed,
   isTournamentComplete,
   normalizeTournament,
   rankScoreboardParticipants,
+  rankTournamentScoreboardParticipants,
   reconcileBracket,
   setTournamentStatus,
   tournamentProgress,
   updateMatchScore,
   updateParticipantScore,
+  addScoreboardRound,
+  updateScoreboardRoundScore,
   updateTournamentName,
   updateTournamentScoringRules,
 } from "./tournament-engine";
@@ -956,6 +961,8 @@ describe("classifiche libere e a squadre", () => {
       tournament,
       rules({ scoreDirection: "lower" }),
     );
+    expect(tournament.status).toBe("active");
+    tournament = setTournamentStatus(tournament, "completed");
     expect(getChampionId(tournament)).toBe(tournament.participants[0].id);
   });
 
@@ -1034,12 +1041,117 @@ describe("compatibilità, immutabilità e funzioni di supporto", () => {
         qualifiersPerGroup: 2,
         shuffleParticipants: false,
       },
+      scoreboardRounds: undefined,
     } as unknown as Tournament;
 
     const normalized = normalizeTournament(legacy);
 
     expect(normalized.participants.every((item) => item.score === 0)).toBe(true);
     expect(normalized.settings.scoring).toEqual(DEFAULT_SCORING_RULES);
+    expect(normalized.scoreboardRounds).toHaveLength(1);
+    expect(normalized.scoreboardRounds[0].scores).toEqual(Object.fromEntries(
+      normalized.participants.map((participant) => [participant.id, 0]),
+    ));
+  });
+
+  it("somma i punteggi di più round senza modificare il torneo sorgente", () => {
+    let tournament = create("scoreboard", ["Ada", "Bea"], {
+      scoring: rules({ scoreDirection: "lower" }),
+    });
+    const [ada, bea] = tournament.participants;
+    const firstRoundId = tournament.scoreboardRounds[0].id;
+    const source = structuredClone(tournament);
+
+    tournament = updateScoreboardRoundScore(tournament, firstRoundId, ada.id, 3);
+    tournament = updateScoreboardRoundScore(tournament, firstRoundId, bea.id, 5);
+    tournament = addScoreboardRound(tournament);
+    const secondRoundId = tournament.scoreboardRounds[1].id;
+    tournament = updateScoreboardRoundScore(tournament, secondRoundId, ada.id, 9);
+    tournament = updateScoreboardRoundScore(tournament, secondRoundId, bea.id, 5);
+
+    expect(source.scoreboardRounds[0].scores).toEqual({
+      [ada.id]: 0,
+      [bea.id]: 0,
+    });
+    expect(tournament.participants.map((item) => item.score)).toEqual([12, 10]);
+    expect(getChampionId(setTournamentStatus(tournament, "completed"))).toBe(bea.id);
+  });
+
+  it.each(["higher", "lower"] as const)(
+    "conta soltanto i round vinti con punteggio %s e non assegna i round pari",
+    (scoreDirection) => {
+      let tournament = create("scoreboard", ["Ada", "Bea", "Carlo"], {
+        scoring: rules({ scoreDirection, scoreboardAggregation: "roundWins" }),
+      });
+      const [ada, bea, carlo] = tournament.participants;
+      const winningScore = scoreDirection === "higher" ? 10 : -10;
+      const losingScore = scoreDirection === "higher" ? -2 : 12;
+      const firstRoundId = tournament.scoreboardRounds[0].id;
+
+      tournament = updateScoreboardRoundScore(tournament, firstRoundId, ada.id, winningScore);
+      tournament = updateScoreboardRoundScore(tournament, firstRoundId, bea.id, losingScore);
+      tournament = updateScoreboardRoundScore(tournament, firstRoundId, carlo.id, losingScore);
+      tournament = addScoreboardRound(tournament);
+      const secondRoundId = tournament.scoreboardRounds[1].id;
+      tournament = updateScoreboardRoundScore(tournament, secondRoundId, ada.id, winningScore);
+      tournament = updateScoreboardRoundScore(tournament, secondRoundId, bea.id, winningScore);
+      tournament = updateScoreboardRoundScore(tournament, secondRoundId, carlo.id, losingScore);
+
+      expect(tournament.participants.map((item) => item.score)).toEqual([1, 0, 0]);
+      expect(getScoreboardLeaderIds(tournament)).toEqual([ada.id]);
+    },
+  );
+
+  it("richiede un vincitore tra tutti i primi a pari merito e conserva la nota", () => {
+    let tournament = create("scoreboard", ["Ada", "Bea", "Carlo"], {
+      scoring: rules({ scoreDirection: "lower" }),
+    });
+    const [ada, bea, carlo] = tournament.participants;
+    const roundId = tournament.scoreboardRounds[0].id;
+    tournament = updateScoreboardRoundScore(tournament, roundId, ada.id, 27);
+    tournament = updateScoreboardRoundScore(tournament, roundId, bea.id, 27);
+    tournament = updateScoreboardRoundScore(tournament, roundId, carlo.id, 27);
+
+    const unresolved = setTournamentStatus(tournament, "completed");
+    expect(unresolved.status).toBe("active");
+    expect(getChampionId(unresolved)).toBeNull();
+    expect(getScoreboardLeaderIds(unresolved)).toEqual([ada.id, bea.id, carlo.id]);
+    expect(completeScoreboardTournament(tournament, "not-a-leader")).toBe(tournament);
+    expect(getScoreboardLeaderIds(create("league", ["A", "B"]))).toEqual([]);
+
+    const completed = completeScoreboardTournament(
+      tournament,
+      bea.id,
+      "Ha vinto la buca di spareggio.",
+    );
+    expect(completed.status).toBe("completed");
+    expect(getChampionId(completed)).toBe(bea.id);
+    expect(completed.winnerOverrideId).toBe(bea.id);
+    expect(completed.winnerOverrideNote).toBe("Ha vinto la buca di spareggio.");
+    expect(rankTournamentScoreboardParticipants(completed)[0].id).toBe(bea.id);
+    expect(rankTournamentScoreboardParticipants({
+      ...completed,
+      winnerOverrideId: "not-a-participant",
+    })[0].id).toBe(ada.id);
+
+    const reopened = setTournamentStatus(completed, "active");
+    expect(reopened.status).toBe("active");
+    expect(reopened.winnerOverrideId).toBeUndefined();
+    expect(reopened.winnerOverrideNote).toBeUndefined();
+  });
+
+  it("riapre una classifica conclusa quando cambia un punteggio", () => {
+    let tournament = create("scoreboard", ["Ada", "Bea"]);
+    const [ada, bea] = tournament.participants;
+    const roundId = tournament.scoreboardRounds[0].id;
+    tournament = completeScoreboardTournament(tournament, bea.id, "Spareggio");
+
+    tournament = updateScoreboardRoundScore(tournament, roundId, ada.id, 2);
+
+    expect(tournament.status).toBe("active");
+    expect(tournament.winnerOverrideId).toBeUndefined();
+    expect(tournament.winnerOverrideNote).toBeUndefined();
+    expect(getScoreboardLeaderIds(tournament)).toEqual([ada.id]);
   });
 
   it("ricostruisce la data di fine dei tornei storici conclusi", () => {

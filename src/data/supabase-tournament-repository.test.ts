@@ -26,9 +26,11 @@ const tournament: Tournament = {
       drawPoints: 1,
       lossPoints: 0,
       scoreDirection: "higher",
+      scoreboardAggregation: "totalScore",
       tieBreakers: ["headToHead", "scoreDifference", "scoreFor"],
     },
   },
+  scoreboardRounds: [{ id: "scoreboard-round-1", label: "Round 1", scores: {} }],
   groups: [],
   bracketSeedIds: [],
   matches: [],
@@ -91,7 +93,14 @@ describe("SupabaseTournamentRepository", () => {
 
   it("include la data di conclusione nel documento cloud", async () => {
     const completedAt = "2026-07-21T14:00:00.000Z";
-    const completed = { ...tournament, status: "completed", completedAt } as Tournament;
+    const completed = {
+      ...tournament,
+      status: "completed",
+      completedAt,
+      scoreboardRounds: [{ id: "scoreboard-round-1", label: "Round 1", scores: {} }],
+      winnerOverrideId: "player-2",
+      winnerOverrideNote: "Vittoria allo spareggio",
+    } as Tournament;
     const completedRow = {
       ...row,
       status: "completed",
@@ -115,7 +124,12 @@ describe("SupabaseTournamentRepository", () => {
     await repository.save(completed);
 
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ completedAt }),
+      data: expect.objectContaining({
+        completedAt,
+        scoreboardRounds: completed.scoreboardRounds,
+        winnerOverrideId: "player-2",
+        winnerOverrideNote: "Vittoria allo spareggio",
+      }),
     }));
   });
 

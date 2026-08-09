@@ -3,6 +3,7 @@ import type {
   MatchScoreUpdate,
   Participant,
   ScoringRules,
+  ScoreboardRound,
   ScoreDirection,
   StandingRow,
   TeamStandingRow,
@@ -28,6 +29,7 @@ export const DEFAULT_SCORING_RULES: ScoringRules = {
   drawPoints: 1,
   lossPoints: 0,
   scoreDirection: "higher",
+  scoreboardAggregation: "totalScore",
   tieBreakers: ["headToHead", "scoreDifference", "scoreFor"],
 };
 
@@ -95,6 +97,9 @@ export function createTournament(input: {
     updatedAt: now,
     participants,
     settings,
+    scoreboardRounds: input.format === "scoreboard"
+      ? [createScoreboardRound(1, participants)]
+      : [],
     groups: [],
     bracketSeedIds: [],
     matches: [],
@@ -232,6 +237,12 @@ export function updateParticipantScore(
   participantId: string,
   score: number,
 ): Tournament {
+  if (tournament.format === "scoreboard") {
+    const firstRound = tournament.scoreboardRounds[0];
+    return firstRound
+      ? updateScoreboardRoundScore(tournament, firstRound.id, participantId, score)
+      : tournament;
+  }
   return {
     ...tournament,
     updatedAt: new Date().toISOString(),
@@ -239,6 +250,107 @@ export function updateParticipantScore(
       participant.id === participantId ? { ...participant, score } : participant,
     ),
   };
+}
+
+function createScoreboardRound(
+  roundNumber: number,
+  participants: Participant[],
+): ScoreboardRound {
+  return {
+    id: `scoreboard-round-${roundNumber}`,
+    label: `Round ${roundNumber}`,
+    scores: Object.fromEntries(
+      participants.map((participant) => [participant.id, 0]),
+    ),
+  };
+}
+
+export function addScoreboardRound(tournament: Tournament): Tournament {
+  if (tournament.format !== "scoreboard") return tournament;
+  const next = {
+    ...invalidateScoreboardCompletion(tournament),
+    updatedAt: new Date().toISOString(),
+    scoreboardRounds: [
+      ...tournament.scoreboardRounds,
+      createScoreboardRound(
+        tournament.scoreboardRounds.length + 1,
+        tournament.participants,
+      ),
+    ],
+  };
+  return withDerivedScoreboardScores(next);
+}
+
+export function updateScoreboardRoundScore(
+  tournament: Tournament,
+  roundId: string,
+  participantId: string,
+  score: number,
+): Tournament {
+  if (
+    tournament.format !== "scoreboard" ||
+    !tournament.participants.some((participant) => participant.id === participantId) ||
+    !tournament.scoreboardRounds.some((round) => round.id === roundId)
+  ) {
+    return tournament;
+  }
+
+  const next = {
+    ...invalidateScoreboardCompletion(tournament),
+    updatedAt: new Date().toISOString(),
+    scoreboardRounds: tournament.scoreboardRounds.map((round) =>
+      round.id === roundId
+        ? { ...round, scores: { ...round.scores, [participantId]: score } }
+        : round,
+    ),
+  };
+  return withDerivedScoreboardScores(next);
+}
+
+function withDerivedScoreboardScores(tournament: Tournament): Tournament {
+  if (tournament.format !== "scoreboard") return tournament;
+  const scores = calculateScoreboardScores(tournament);
+  return {
+    ...tournament,
+    participants: tournament.participants.map((participant) => ({
+      ...participant,
+      score: scores.get(participant.id) ?? 0,
+    })),
+  };
+}
+
+function calculateScoreboardScores(tournament: Tournament) {
+  const scores = new Map(
+    tournament.participants.map((participant) => [participant.id, 0]),
+  );
+
+  if (tournament.settings.scoring.scoreboardAggregation === "roundWins") {
+    for (const round of tournament.scoreboardRounds) {
+      const roundScores = tournament.participants.map(
+        (participant) => round.scores[participant.id] ?? 0,
+      );
+      const bestScore = tournament.settings.scoring.scoreDirection === "higher"
+        ? Math.max(...roundScores)
+        : Math.min(...roundScores);
+      const winners = tournament.participants.filter(
+        (participant) => (round.scores[participant.id] ?? 0) === bestScore,
+      );
+      if (winners.length === 1) {
+        scores.set(winners[0].id, (scores.get(winners[0].id) ?? 0) + 1);
+      }
+    }
+    return scores;
+  }
+
+  for (const round of tournament.scoreboardRounds) {
+    for (const participant of tournament.participants) {
+      scores.set(
+        participant.id,
+        (scores.get(participant.id) ?? 0) + (round.scores[participant.id] ?? 0),
+      );
+    }
+  }
+  return scores;
 }
 
 export function updateTournamentName(
@@ -272,6 +384,10 @@ export function updateTournamentScoringRules(
     next = refreshHybridBracket(next);
   }
 
+  if (next.format === "scoreboard") {
+    next = withDerivedScoreboardScores(invalidateScoreboardCompletion(next));
+  }
+
   if (
     next.format !== "duel" &&
     next.format !== "scoreboard" &&
@@ -302,7 +418,11 @@ export function normalizeTournament(tournament: Tournament): Tournament {
     tieBreakers,
   };
 
-  return withTournamentStatus({
+  const scoreboardRounds = tournament.format === "scoreboard"
+    ? normalizeScoreboardRounds(tournament)
+    : [];
+
+  const normalized = {
     ...tournament,
     participants: tournament.participants.map((participant) =>
       (tournament.format === "scoreboard" || tournament.format === "team-scoreboard") &&
@@ -315,33 +435,115 @@ export function normalizeTournament(tournament: Tournament): Tournament {
       ...tournament.settings,
       scoring,
     },
-  }, tournament.status);
+    scoreboardRounds,
+  };
+  return withTournamentStatus(
+    withDerivedScoreboardScores(normalized),
+    tournament.status,
+  );
+}
+
+function normalizeScoreboardRounds(tournament: Tournament): ScoreboardRound[] {
+  const storedRounds = Array.isArray(tournament.scoreboardRounds)
+    ? tournament.scoreboardRounds
+    : [];
+  const sourceRounds = storedRounds.length > 0
+    ? storedRounds
+    : [{
+        id: "scoreboard-round-1",
+        label: "Round 1",
+        scores: Object.fromEntries(
+          tournament.participants.map((participant) => [
+            participant.id,
+            participant.score ?? 0,
+          ]),
+        ),
+      }];
+
+  return sourceRounds.map((round, index) => ({
+    id: round.id || `scoreboard-round-${index + 1}`,
+    label: round.label || `Round ${index + 1}`,
+    scores: Object.fromEntries(
+      tournament.participants.map((participant) => [
+        participant.id,
+        Number.isFinite(round.scores?.[participant.id])
+          ? round.scores[participant.id]
+          : 0,
+      ]),
+    ),
+  }));
 }
 
 export function setTournamentStatus(
   tournament: Tournament,
   status: Tournament["status"],
 ): Tournament {
-  let matches = tournament.matches;
+  if (
+    status === "completed" &&
+    tournament.format === "scoreboard" &&
+    getScoreboardLeaderIds(tournament).length !== 1
+  ) {
+    return tournament;
+  }
 
-  if (tournament.format === "duel") {
+  const source = status === "active"
+    ? withoutWinnerOverride(tournament)
+    : tournament;
+  let matches = source.matches;
+
+  if (source.format === "duel") {
     if (status === "completed") {
       matches = matches.filter(isMatchPlayed);
     } else if (matches.length === 0 || matches.every(isMatchPlayed)) {
       matches = [
         ...matches,
-        createDuelMatch(tournament.participants, matches.length + 1),
+        createDuelMatch(source.participants, matches.length + 1),
       ];
     }
   }
 
   const updatedAt = new Date().toISOString();
   return withTournamentStatus({
-    ...tournament,
+    ...source,
     matches,
     status,
     updatedAt,
   }, status);
+}
+
+export function completeScoreboardTournament(
+  tournament: Tournament,
+  winnerId: string,
+  note?: string,
+): Tournament {
+  const leaderIds = getScoreboardLeaderIds(tournament);
+  if (tournament.format !== "scoreboard" || !leaderIds.includes(winnerId)) {
+    return tournament;
+  }
+
+  const updatedAt = new Date().toISOString();
+  const trimmedNote = note?.trim();
+  return withTournamentStatus({
+    ...withoutWinnerOverride(tournament),
+    status: "completed",
+    updatedAt,
+    winnerOverrideId: winnerId,
+    ...(trimmedNote ? { winnerOverrideNote: trimmedNote } : {}),
+  }, "completed");
+}
+
+function withoutWinnerOverride(tournament: Tournament): Tournament {
+  const next = { ...tournament };
+  delete next.winnerOverrideId;
+  delete next.winnerOverrideNote;
+  return next;
+}
+
+function invalidateScoreboardCompletion(tournament: Tournament): Tournament {
+  const next = withoutWinnerOverride(tournament);
+  return tournament.status === "completed"
+    ? withTournamentStatus({ ...next, status: "active" }, "active")
+    : next;
 }
 
 function withTournamentStatus(
@@ -867,10 +1069,11 @@ export function tournamentProgress(tournament: Tournament) {
 export function getChampionId(tournament: Tournament) {
   if (!isTournamentComplete(tournament)) return null;
   if (tournament.format === "scoreboard") {
-    return rankScoreboardParticipants(
-      tournament.participants,
-      tournament.settings.scoring.scoreDirection,
-    )[0]?.id ?? null;
+    const leaderIds = getScoreboardLeaderIds(tournament);
+    if (leaderIds.length === 1) return leaderIds[0];
+    return tournament.winnerOverrideId && leaderIds.includes(tournament.winnerOverrideId)
+      ? tournament.winnerOverrideId
+      : null;
   }
   if (tournament.format === "team-scoreboard") return null;
   if (tournament.format === "league" || tournament.format === "duel") {
@@ -894,6 +1097,26 @@ export function getChampionId(tournament: Tournament) {
     : null;
 }
 
+export function getScoreboardLeaderIds(tournament: Tournament) {
+  if (tournament.format !== "scoreboard" || tournament.participants.length === 0) {
+    return [];
+  }
+  const ranked = rankScoreboardParticipants(
+    tournament.participants,
+    scoreboardRankingDirection(tournament),
+  );
+  const bestScore = ranked[0]?.score ?? 0;
+  return ranked
+    .filter((participant) => (participant.score ?? 0) === bestScore)
+    .map((participant) => participant.id);
+}
+
+export function scoreboardRankingDirection(tournament: Tournament): ScoreDirection {
+  return tournament.settings.scoring.scoreboardAggregation === "roundWins"
+    ? "higher"
+    : tournament.settings.scoring.scoreDirection;
+}
+
 export function compareRankedScores(
   first: number,
   second: number,
@@ -911,6 +1134,20 @@ export function rankScoreboardParticipants(
       compareRankedScores(first.score ?? 0, second.score ?? 0, direction) ||
       first.name.localeCompare(second.name, "it", { sensitivity: "base" }),
   );
+}
+
+export function rankTournamentScoreboardParticipants(tournament: Tournament) {
+  const ranked = rankScoreboardParticipants(
+    tournament.participants,
+    scoreboardRankingDirection(tournament),
+  );
+  if (!tournament.winnerOverrideId) return ranked;
+  const winner = ranked.find(
+    (participant) => participant.id === tournament.winnerOverrideId,
+  );
+  const bestScore = ranked[0]?.score ?? 0;
+  if (!winner || (winner.score ?? 0) !== bestScore) return ranked;
+  return [winner, ...ranked.filter((participant) => participant.id !== winner.id)];
 }
 
 export function calculateTeamStandings(

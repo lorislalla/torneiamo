@@ -225,13 +225,19 @@ function PlayerScoreRow({
       {isWinner ? <Check className="size-3.5 text-lime-300" /> : null}
       <input
         key={score ?? "empty"}
-        type="number"
+        type="text"
         disabled={readOnly}
-        min={0}
         inputMode="numeric"
         aria-label={`Punteggio ${participantLabel(participant)}`}
         className="size-10 rounded-lg border border-white/10 bg-black/25 text-center font-mono text-base font-semibold text-white outline-none transition focus:border-lime-300/55 focus:ring-2 focus:ring-lime-300/10"
         defaultValue={score ?? ""}
+        onFocus={(event) => event.currentTarget.select()}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.currentTarget.focus();
+          event.currentTarget.select();
+        }}
+        onClick={(event) => event.currentTarget.select()}
         onBlur={(event) => {
           const parsed = event.currentTarget.value === ""
             ? null
