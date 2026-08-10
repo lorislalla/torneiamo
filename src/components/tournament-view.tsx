@@ -148,10 +148,10 @@ export function TournamentView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] px-4 pb-16 pt-6 sm:px-7 lg:px-10 lg:pt-9">
+    <div className="mx-auto min-w-0 w-full max-w-[1440px] px-4 pb-16 pt-6 sm:px-7 lg:px-10 lg:pt-9">
       <header className="mb-7">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
+          <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-lime-300/15 bg-lime-300/[.065] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[.14em] text-lime-200">
                 {FORMAT_LABELS[tournament.format]}
@@ -165,7 +165,7 @@ export function TournamentView({
                 {tournament.status === "completed" ? "Completato" : "In corso"}
               </span>
             </div>
-            <h1 className="text-3xl font-medium tracking-[-.04em] text-white sm:text-5xl">
+            <h1 className="max-w-full break-words text-3xl font-medium tracking-[-.04em] text-white [overflow-wrap:anywhere] sm:text-5xl">
               {tournament.name}
             </h1>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50">
@@ -216,7 +216,7 @@ export function TournamentView({
         </div>
       </header>
 
-      <nav className="mb-7 flex gap-1 overflow-x-auto rounded-2xl border border-white/8 bg-black/15 p-1.5" aria-label="Sezioni del torneo">
+      <nav className="mb-7 flex max-w-full gap-1 overflow-x-auto overscroll-x-contain rounded-2xl border border-white/8 bg-black/15 p-1.5" aria-label="Sezioni del torneo">
         {tabs.filter((tab) => !tab.hidden).map((tab) => {
           const Icon = tab.icon;
           return (
@@ -224,7 +224,7 @@ export function TournamentView({
               key={tab.id}
               type="button"
               className={cn(
-                "flex h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-sm transition sm:px-4",
+                "flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-2 text-sm transition sm:gap-2 sm:px-4",
                 activeTab === tab.id
                   ? "bg-white/[.09] font-medium text-white shadow-sm"
                   : "text-white/45 hover:text-white/75",
@@ -789,8 +789,8 @@ function DetailsSection({
   }
   return (
     <>
-    <div className="grid gap-5 lg:grid-cols-[1.3fr_.7fr]">
-      <section className="rounded-3xl border border-white/8 bg-white/[.025] p-5 sm:p-7">
+    <div className="grid min-w-0 gap-5 lg:grid-cols-[1.3fr_.7fr]">
+      <section className="min-w-0 rounded-3xl border border-white/8 bg-white/[.025] p-5 sm:p-7">
         <h2 className="text-xl font-medium text-white">Dettagli del torneo</h2>
         <div className="mt-6 rounded-2xl border border-lime-300/10 bg-lime-300/[.035] p-4">
           <div className="flex items-start justify-between gap-4">
@@ -954,7 +954,7 @@ function DetailsSection({
           )}
         </div>
       </section>
-      <aside className="space-y-4">
+      <aside className="min-w-0 space-y-4">
         {(tournament.format === "duel" || tournament.format === "scoreboard" || tournament.format === "team-scoreboard") && canEdit ? (
           <div className="rounded-3xl border border-lime-300/10 bg-lime-300/[.035] p-5">
             <SquareCheckBig className="size-5 text-lime-300" />
