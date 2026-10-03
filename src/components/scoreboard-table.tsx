@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Trophy } from "lucide-react";
 import type { Tournament } from "@/domain/types";
 import {
+  getChampionId,
   rankTournamentScoreboardParticipants,
 } from "@/domain/tournament-engine";
+import { cn } from "@/lib/cn";
 import { ScoreInput } from "./score-input";
 import { Button, PlayerMark } from "./ui";
 
@@ -24,6 +26,7 @@ export function ScoreboardTable({
 }) {
   const aggregation = tournament.settings.scoring.scoreboardAggregation;
   const sortedParticipants = rankTournamentScoreboardParticipants(tournament);
+  const championId = tournament.status === "completed" ? getChampionId(tournament) : null;
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
   const selectedParticipant = tournament.participants.find((participant) => participant.id === selectedParticipantId);
 
@@ -88,11 +91,14 @@ export function ScoreboardTable({
           </thead>
           <tbody className="divide-y divide-white/[.055]">
             {sortedParticipants.map((participant, index) => (
-              <tr key={participant.id}>
+              <tr key={participant.id} className={participant.id === championId ? "bg-lime-300/[.08]" : undefined}>
                 <th
                   scope="row"
-                  aria-label={`${index + 1}. ${participant.name}`}
-                  className="sticky left-0 z-[1] w-14 min-w-14 max-w-14 bg-[#0f1d17] px-2 py-3 text-left shadow-[12px_0_22px_-22px_rgba(0,0,0,.9)] sm:w-auto sm:min-w-48 sm:max-w-none sm:px-3"
+                  aria-label={`${index + 1}. ${participant.name}${participant.id === championId ? ", Vincitore del torneo" : ""}`}
+                  className={cn(
+                    "sticky left-0 z-[1] w-14 min-w-14 max-w-14 px-2 py-3 text-left shadow-[12px_0_22px_-22px_rgba(0,0,0,.9)] sm:w-auto sm:min-w-48 sm:max-w-none sm:px-3",
+                    participant.id === championId ? "bg-[#1b2e1c]" : "bg-[#0f1d17]",
+                  )}
                 >
                   <div className="flex min-w-0 items-center gap-2 sm:gap-3">
                     <span className="hidden w-4 shrink-0 text-center font-mono text-xs font-normal text-white/45 sm:block">
@@ -100,18 +106,24 @@ export function ScoreboardTable({
                     </span>
                     <button
                       type="button"
-                      className="grid size-10 shrink-0 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-lime-300 sm:hidden"
+                      className="relative grid size-10 shrink-0 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-lime-300 sm:hidden"
                       aria-label={`Mostra nome di ${participant.name}`}
                       aria-pressed={selectedParticipantId === participant.id}
                       onClick={() => setSelectedParticipantId((current) => current === participant.id ? null : participant.id)}
                     >
                       <PlayerMark name={participant.name} accent={participant.accent} size="sm" />
+                      {participant.id === championId ? <Trophy className="absolute right-0 top-0 size-3.5 rounded bg-[#1b2e1c] text-lime-300" aria-hidden="true" /> : null}
                     </button>
                     <span className="hidden sm:contents"><PlayerMark name={participant.name} accent={participant.accent} size="sm" /></span>
                     <span className="hidden min-w-0 sm:block">
                       <span className="block truncate text-sm font-medium text-white">
                         {participant.name}
                       </span>
+                      {participant.id === championId ? (
+                        <span className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-lime-200">
+                          <Trophy className="size-3" aria-hidden="true" /> Vincitore
+                        </span>
+                      ) : null}
                       {participant.teamName ? (
                         <span className="block truncate text-[11px] font-normal text-white/35">
                           {participant.teamName}
@@ -131,7 +143,10 @@ export function ScoreboardTable({
                     />
                   </td>
                 ))}
-                <td className="sticky right-0 z-[1] border-l border-white/8 bg-[#101e18] px-2 py-3 text-center font-mono text-lg font-semibold text-lime-200 shadow-[-12px_0_22px_-22px_rgba(0,0,0,.9)] sm:px-3">
+                <td className={cn(
+                  "sticky right-0 z-[1] border-l border-white/8 px-2 py-3 text-center font-mono text-lg font-semibold text-lime-200 shadow-[-12px_0_22px_-22px_rgba(0,0,0,.9)] sm:px-3",
+                  participant.id === championId ? "bg-[#1b2e1c]" : "bg-[#101e18]",
+                )}>
                   {participant.score ?? 0}
                 </td>
               </tr>

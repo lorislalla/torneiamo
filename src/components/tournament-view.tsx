@@ -412,6 +412,7 @@ function Overview({
           </div>
           <TeamScoreboardTable
             participants={tournament.participants}
+            completed={tournament.status === "completed"}
             scoreDirection={tournament.settings.scoring.scoreDirection}
             onScore={onParticipantScore}
             readOnly={readOnly}
@@ -573,6 +574,7 @@ function StandingsSection({
     return (
       <TeamScoreboardTable
         participants={tournament.participants}
+        completed={tournament.status === "completed"}
         scoreDirection={tournament.settings.scoring.scoreDirection}
         onScore={onScore}
         readOnly={readOnly}
@@ -589,6 +591,7 @@ function StandingsSection({
               <span className="font-mono text-[10px] uppercase tracking-[.12em] text-white/30">Primi {tournament.settings.qualifiersPerGroup} ai playoff</span>
             </div>
             <StandingsTable
+              championId={tournament.status === "completed" ? getChampionId(tournament) : null}
               participants={tournament.participants.filter((participant) => group.participantIds.includes(participant.id))}
               matches={tournament.matches.filter((match) => match.groupId === group.id)}
               qualifiedCount={tournament.settings.qualifiersPerGroup}
@@ -599,7 +602,7 @@ function StandingsSection({
       </div>
     );
   }
-  return <StandingsTable participants={tournament.participants} matches={tournament.matches} scoring={tournament.settings.scoring} />;
+  return <StandingsTable participants={tournament.participants} matches={tournament.matches} scoring={tournament.settings.scoring} championId={tournament.status === "completed" ? getChampionId(tournament) : null} />;
 }
 
 function DetailsSection({

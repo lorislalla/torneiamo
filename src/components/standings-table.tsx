@@ -8,6 +8,7 @@ import {
   Minus,
   TrendingDown,
   TrendingUp,
+  Trophy,
 } from "lucide-react";
 import { participantLabel } from "@/domain/participant-label";
 import type { Match, Participant, ScoringRules, StandingRow } from "@/domain/types";
@@ -34,11 +35,13 @@ export function StandingsTable({
   matches,
   qualifiedCount = 0,
   scoring,
+  championId,
 }: {
   participants: Participant[];
   matches: Match[];
   qualifiedCount?: number;
   scoring: ScoringRules;
+  championId?: string | null;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
     key: "points",
@@ -96,7 +99,7 @@ export function StandingsTable({
               const participant = participantById.get(row.participantId);
               if (!participant) return null;
               return (
-                <tr key={row.participantId} className="border-b border-white/[.055] last:border-0">
+                <tr key={row.participantId} className={cn("border-b border-white/[.055] last:border-0", row.participantId === championId && "bg-lime-300/[.08]")}>
                   <td className="px-4 py-3 text-center">
                     <span className="inline-flex items-center gap-1 font-mono text-xs text-white/50">
                       {row.position <= qualifiedCount ? (
@@ -112,6 +115,11 @@ export function StandingsTable({
                         <span className="block truncate font-medium text-white">
                           {participant.name}
                         </span>
+                        {row.participantId === championId ? (
+                          <span className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-lime-200">
+                            <Trophy className="size-3" aria-hidden="true" /> Vincitore
+                          </span>
+                        ) : null}
                         {participant.teamName ? (
                           <span className="block truncate text-[11px] text-white/35">
                             {participant.teamName}

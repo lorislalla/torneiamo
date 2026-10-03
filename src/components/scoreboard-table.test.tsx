@@ -2,11 +2,48 @@
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createTournament, updateScoreboardRoundScore } from "@/domain/tournament-engine";
+import { completeScoreboardTournament, createTournament, DEFAULT_SCORING_RULES, setTournamentStatus, updateScoreboardRoundScore } from "@/domain/tournament-engine";
 import { ScoreboardTable } from "./scoreboard-table";
 
 describe("ScoreboardTable", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+  it.each([
+    ["higher", "totalScore"], ["lower", "totalScore"],
+    ["higher", "roundWins"], ["lower", "roundWins"],
+  ] as const)("evidenzia il vincitore %s / %s soltanto a torneo concluso", (scoreDirection, scoreboardAggregation) => {
+    let tournament = createTournament({
+      name: "Golf", format: "scoreboard", participants: [{ name: "Ada" }, { name: "Bea" }],
+      settings: { shuffleParticipants: false, scoring: { ...DEFAULT_SCORING_RULES, scoreDirection, scoreboardAggregation } },
+    });
+    const [ada, bea] = tournament.participants;
+    const roundId = tournament.scoreboardRounds[0].id;
+    tournament = updateScoreboardRoundScore(tournament, roundId, ada.id, -12);
+    tournament = updateScoreboardRoundScore(tournament, roundId, bea.id, 25);
+    const props = { onScore: vi.fn(), onAddRound: vi.fn(), onRemoveRound: vi.fn() };
+    const { rerender } = render(<ScoreboardTable tournament={tournament} {...props} />);
+    expect(screen.queryByText("Vincitore")).toBeNull();
+
+    tournament = setTournamentStatus(tournament, "completed");
+    rerender(<ScoreboardTable tournament={tournament} {...props} />);
+    const winnerName = scoreDirection === "higher" ? "Bea" : "Ada";
+    const row = screen.getByRole("rowheader", { name: `1. ${winnerName}, Vincitore del torneo` }).closest("tr")!;
+    expect(within(row).getByText("Vincitore")).toBeDefined();
+    expect(screen.getAllByText("Vincitore")).toHaveLength(1);
+    expect(screen.getByRole("rowheader", { name: `2. ${scoreDirection === "higher" ? "Ada" : "Bea"}` })).toBeDefined();
+
+    rerender(<ScoreboardTable tournament={setTournamentStatus(tournament, "active")} {...props} />);
+    expect(screen.queryByText("Vincitore")).toBeNull();
+    expect(screen.queryByRole("rowheader", { name: /Vincitore del torneo/ })).toBeNull();
+  });
+
+  it("evidenzia il vincitore scelto allo spareggio, non il primo in ordine alfabetico", () => {
+    const created = createTournament({ name: "Golf", format: "scoreboard", participants: [{ name: "Ada" }, { name: "Bea" }], settings: { shuffleParticipants: false } });
+    const tournament = completeScoreboardTournament(created, created.participants[1].id);
+    render(<ScoreboardTable tournament={tournament} onScore={vi.fn()} onAddRound={vi.fn()} onRemoveRound={vi.fn()} />);
+    expect(screen.getByRole("rowheader", { name: "1. Bea, Vincitore del torneo" })).toBeDefined();
+    expect(screen.getByRole("rowheader", { name: "2. Ada" })).toBeDefined();
+    expect(screen.getAllByText("Vincitore")).toHaveLength(1);
+  });
   it("accorpa posizione e partecipante per lasciare spazio ai round su mobile", () => {
     const tournament = createTournament({
       name: "Minigolf",
