@@ -2,6 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { addScoreboardRound, createTournament, removeScoreboardRound, updateScoreboardRoundScore } from "@/domain/tournament-engine";
 import type { Tournament } from "@/domain/types";
 import type { Database, Json } from "@/lib/supabase/database.types";
 import { getLocalTournamentRepository } from "./local-storage-tournament-repository";
@@ -63,6 +64,33 @@ beforeEach(() => {
 });
 
 describe("SupabaseTournamentRepository", () => {
+  it("scrive e rilegge round eliminati e totali ricalcolati", async () => {
+    let created = createTournament({ name: "Golf", format: "scoreboard", participants: [{ name: "Ada" }, { name: "Bea" }] });
+    created = addScoreboardRound(created);
+    created = updateScoreboardRoundScore(created, created.scoreboardRounds[0].id, created.participants[0].id, 15);
+    created = updateScoreboardRoundScore(created, created.scoreboardRounds[1].id, created.participants[1].id, -4);
+    const removed = removeScoreboardRound(created, created.scoreboardRounds[0].id);
+    let storedRow = { ...row, id: created.id, name: created.name, data: created as unknown as Json };
+    const insert = vi.fn(async (payload: { data: Json }) => {
+      storedRow = { ...storedRow, data: payload.data };
+      return { error: null };
+    });
+    const from = vi.fn((table: string) => table === "tournament_members"
+      ? { select: async () => ({ data: [], error: null }) }
+      : {
+        insert,
+        select: () => ({
+          eq: () => ({ single: async () => ({ data: storedRow, error: null }) }),
+          order: async () => ({ data: [storedRow], error: null }),
+        }),
+      });
+    const client = { from } as unknown as SupabaseClient<Database>;
+    await new SupabaseTournamentRepository(client, "user-test").save(removed);
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ scoreboardRounds: removed.scoreboardRounds }) }));
+    const [restored] = await new SupabaseTournamentRepository(client, "user-test").list();
+    expect(restored.scoreboardRounds).toEqual(removed.scoreboardRounds);
+    expect(restored.participants.map((participant) => participant.score)).toEqual([0, -4]);
+  });
   it("inserisce il torneo prima di leggerlo con la policy RLS", async () => {
     const calls: string[] = [];
     const insert = vi.fn(async () => {

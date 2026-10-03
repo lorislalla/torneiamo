@@ -5,6 +5,7 @@ import {
   addScoreboardRound,
   completeScoreboardTournament,
   createTournament,
+  removeScoreboardRound,
   setTournamentStatus,
   updateScoreboardRoundScore,
   updateTournamentName,
@@ -24,6 +25,22 @@ beforeEach(() => {
 });
 
 describe("LocalStorageTournamentRepository", () => {
+  it("non ripristina i round eliminati dopo scrittura e lettura", async () => {
+    let tournament = createTournament({ name: "Golf", format: "scoreboard", participants: [{ name: "Ada" }, { name: "Bea" }] });
+    tournament = addScoreboardRound(tournament);
+    const [first, second] = tournament.scoreboardRounds;
+    tournament = updateScoreboardRoundScore(tournament, first.id, tournament.participants[0].id, 12);
+    tournament = updateScoreboardRoundScore(tournament, second.id, tournament.participants[1].id, -3);
+    const repository = getLocalTournamentRepository();
+    await repository.save(removeScoreboardRound(tournament, first.id));
+    const [restored] = await repository.list();
+    expect(restored.scoreboardRounds.map((round) => round.id)).toEqual([second.id]);
+    expect(restored.participants.map((participant) => participant.score)).toEqual([0, -3]);
+    await repository.save(removeScoreboardRound(restored, second.id));
+    const [empty] = await repository.list();
+    expect(empty.scoreboardRounds).toEqual([]);
+    expect(empty.participants.map((participant) => participant.score)).toEqual([0, 0]);
+  });
   it("mantiene le date di creazione e conclusione dopo scrittura e lettura", async () => {
     const created = createTournament({
       name: "Fifa 26",

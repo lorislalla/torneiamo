@@ -36,6 +36,7 @@ import {
   isMatchPlayed,
   tournamentProgress,
   rankTournamentScoreboardParticipants,
+  removeScoreboardRound,
   setTournamentStatus,
   updateParticipantScore,
   updateScoreboardRoundScore,
@@ -147,6 +148,10 @@ export function TournamentView({
     onUpdate(addScoreboardRound(tournament));
   }
 
+  function removeRound(roundId: string) {
+    onUpdate(removeScoreboardRound(tournament, roundId));
+  }
+
   return (
     <div className="mx-auto min-w-0 w-full max-w-[1440px] px-4 pb-16 pt-6 sm:px-7 lg:px-10 lg:pt-9">
       <header className="mb-7">
@@ -246,6 +251,7 @@ export function TournamentView({
           onParticipantScore={updateScoreboard}
           onScoreboardRoundScore={updateScoreboardRound}
           onAddScoreboardRound={addRound}
+          onRemoveScoreboardRound={removeRound}
           onNavigate={setActiveTab}
           readOnly={!canEdit}
           isSynced={isSynced}
@@ -260,6 +266,7 @@ export function TournamentView({
           onScore={updateScoreboard}
           onScoreboardRoundScore={updateScoreboardRound}
           onAddScoreboardRound={addRound}
+          onRemoveScoreboardRound={removeRound}
           readOnly={!canEdit}
         />
       ) : null}
@@ -295,6 +302,7 @@ function Overview({
   onParticipantScore,
   onScoreboardRoundScore,
   onAddScoreboardRound,
+  onRemoveScoreboardRound,
   onNavigate,
   readOnly,
   isSynced,
@@ -306,6 +314,7 @@ function Overview({
   onParticipantScore: (participantId: string, score: number) => void;
   onScoreboardRoundScore: (roundId: string, participantId: string, score: number) => void;
   onAddScoreboardRound: () => void;
+  onRemoveScoreboardRound: (roundId: string) => void;
   onNavigate: (tab: TabId) => void;
   readOnly: boolean;
   isSynced: boolean;
@@ -391,6 +400,7 @@ function Overview({
             tournament={tournament}
             onScore={onScoreboardRoundScore}
             onAddRound={onAddScoreboardRound}
+            onRemoveRound={onRemoveScoreboardRound}
             readOnly={readOnly}
           />
         </section>
@@ -538,12 +548,14 @@ function StandingsSection({
   onScore,
   onScoreboardRoundScore,
   onAddScoreboardRound,
+  onRemoveScoreboardRound,
   readOnly,
 }: {
   tournament: Tournament;
   onScore: (participantId: string, score: number) => void;
   onScoreboardRoundScore: (roundId: string, participantId: string, score: number) => void;
   onAddScoreboardRound: () => void;
+  onRemoveScoreboardRound: (roundId: string) => void;
   readOnly: boolean;
 }) {
   if (tournament.format === "scoreboard") {
@@ -552,6 +564,7 @@ function StandingsSection({
         tournament={tournament}
         onScore={onScoreboardRoundScore}
         onAddRound={onAddScoreboardRound}
+        onRemoveRound={onRemoveScoreboardRound}
         readOnly={readOnly}
       />
     );

@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTournament } from "@/domain/tournament-engine";
 import { TournamentView } from "./tournament-view";
 
 describe("TournamentView", () => {
+  afterEach(cleanup);
+  it.each(["Panoramica", "Classifica"])("elimina il round dalla scheda %s tramite il motore", (tab) => {
+    const tournament = createTournament({ name: "Golf", format: "scoreboard", participants: [{ name: "Ada" }, { name: "Bea" }] });
+    const onUpdate = vi.fn();
+    render(<TournamentView tournament={tournament} onUpdate={onUpdate} onDelete={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: tab }));
+    fireEvent.click(screen.getByRole("button", { name: "Elimina Round 1" }));
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ scoreboardRounds: [], status: "active" }));
+  });
   it("chiede vincitore e nota prima di concludere una classifica libera in parità", () => {
     const tournament = createTournament({
       name: "Minigolf",

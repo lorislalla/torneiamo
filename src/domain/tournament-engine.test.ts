@@ -28,6 +28,7 @@ import {
   updateMatchScore,
   updateParticipantScore,
   addScoreboardRound,
+  removeScoreboardRound,
   updateScoreboardRoundScore,
   updateTournamentName,
   updateTournamentScoringRules,
@@ -1052,6 +1053,64 @@ describe("compatibilità, immutabilità e funzioni di supporto", () => {
     expect(normalized.scoreboardRounds[0].scores).toEqual(Object.fromEntries(
       normalized.participants.map((participant) => [participant.id, 0]),
     ));
+  });
+
+  it.each([
+    ["higher", "totalScore"], ["lower", "totalScore"],
+    ["higher", "roundWins"], ["lower", "roundWins"],
+  ] as const)("rimuove round e ricalcola la classifica %s / %s senza mutazioni", (scoreDirection, scoreboardAggregation) => {
+    let tournament = create("scoreboard", ["Ada", "Bea"], {
+      scoring: rules({ scoreDirection, scoreboardAggregation }),
+    });
+    tournament = addScoreboardRound(tournament);
+    const [ada, bea] = tournament.participants;
+    const [first, second] = tournament.scoreboardRounds;
+    tournament = updateScoreboardRoundScore(tournament, first.id, ada.id, 25);
+    tournament = updateScoreboardRoundScore(tournament, first.id, bea.id, -4);
+    tournament = updateScoreboardRoundScore(tournament, second.id, ada.id, -12);
+    tournament = updateScoreboardRoundScore(tournament, second.id, bea.id, 7);
+    tournament = completeScoreboardTournament(tournament, bea.id, "Spareggio");
+    const snapshot = structuredClone(tournament);
+
+    const removed = removeScoreboardRound(tournament, first.id);
+    expect(tournament).toEqual(snapshot);
+    expect(removed.scoreboardRounds).toEqual([snapshot.scoreboardRounds[1]]);
+    expect(removed.participants.map((participant) => participant.score)).toEqual(
+      scoreboardAggregation === "totalScore" ? [-12, 7] : scoreDirection === "higher" ? [0, 1] : [1, 0],
+    );
+    expect(rankTournamentScoreboardParticipants(removed)[0].id).toBe(scoreDirection === "higher" ? bea.id : ada.id);
+    expect(removed.status).toBe("active");
+    expect(removed.completedAt).toBeUndefined();
+    expect(removed.winnerOverrideId).toBeUndefined();
+    expect(removed.winnerOverrideNote).toBeUndefined();
+  });
+
+  it("mantiene identificativi unici dopo la rimozione di un round intermedio", () => {
+    let tournament = addScoreboardRound(addScoreboardRound(create("scoreboard", ["Ada", "Bea"])));
+    const lastRound = tournament.scoreboardRounds[2];
+    tournament = updateScoreboardRoundScore(tournament, lastRound.id, tournament.participants[0].id, 14);
+    tournament = removeScoreboardRound(tournament, tournament.scoreboardRounds[1].id);
+    tournament = addScoreboardRound(tournament);
+    expect(tournament.scoreboardRounds.map((round) => round.id)).toEqual(["scoreboard-round-1", "scoreboard-round-3", "scoreboard-round-4"]);
+    expect(tournament.scoreboardRounds[1].scores[tournament.participants[0].id]).toBe(14);
+    expect(Object.values(tournament.scoreboardRounds[2].scores)).toEqual([0, 0]);
+  });
+
+  it("mantiene vuota la classifica dopo l'eliminazione dell'ultimo round e permette di ripartire", () => {
+    let tournament = create("scoreboard", ["Ada", "Bea"]);
+    tournament = updateScoreboardRoundScore(tournament, tournament.scoreboardRounds[0].id, tournament.participants[0].id, -20);
+    tournament = removeScoreboardRound(tournament, tournament.scoreboardRounds[0].id);
+    const restored = normalizeTournament(tournament);
+    expect(restored.scoreboardRounds).toEqual([]);
+    expect(restored.participants.map((participant) => participant.score)).toEqual([0, 0]);
+    expect(addScoreboardRound(restored).scoreboardRounds).toHaveLength(1);
+  });
+
+  it("ignora eliminazioni di round inesistenti e di altri formati", () => {
+    const scoreboard = create("scoreboard", ["Ada", "Bea"]);
+    const league = create("league", ["Ada", "Bea"]);
+    expect(removeScoreboardRound(scoreboard, "missing")).toBe(scoreboard);
+    expect(removeScoreboardRound(league, "missing")).toBe(league);
   });
 
   it("somma i punteggi di più round senza modificare il torneo sorgente", () => {

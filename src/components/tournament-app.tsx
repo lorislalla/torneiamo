@@ -308,7 +308,8 @@ export function TournamentApp() {
                   key={tournament.id}
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition",
+                    "flex w-full items-center gap-3 rounded-xl border-l-4 px-3 py-3 text-left transition",
+                    tournament.status === "active" ? "border-l-lime-300" : "border-l-transparent",
                     activeId === tournament.id ? "bg-white/[.08] text-white" : "text-white/48 hover:bg-white/[.04] hover:text-white/75",
                   )}
                   onClick={() => { setActiveId(tournament.id); setMobileMenuOpen(false); }}
@@ -318,11 +319,17 @@ export function TournamentApp() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{tournament.name}</span>
+                    {tournament.status === "active" ? (
+                      <span className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-lime-300/15 px-2 py-0.5 text-[10px] font-semibold text-lime-200">
+                        <span className="size-1.5 rounded-full bg-lime-300" aria-hidden="true" />
+                        In corso
+                      </span>
+                    ) : null}
                     <span className="mt-1 block text-[10px] leading-4 text-white/45">
                       Creato {formatTournamentDate(tournament.createdAt)}
                       {tournament.status === "completed"
                         ? ` · Fine ${formatTournamentDate(tournamentCompletedAt(tournament) ?? tournament.updatedAt)}`
-                        : " · In corso"}
+                        : ""}
                     </span>
                   </span>
                   {user && repository.roleFor(tournament.id) !== "owner" ? <Users className="size-3.5 text-white/25" /> : null}

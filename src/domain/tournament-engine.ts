@@ -273,12 +273,25 @@ export function addScoreboardRound(tournament: Tournament): Tournament {
     scoreboardRounds: [
       ...tournament.scoreboardRounds,
       createScoreboardRound(
-        tournament.scoreboardRounds.length + 1,
+        Math.max(0, ...tournament.scoreboardRounds.map((round) =>
+          Number(round.id.replace("scoreboard-round-", "")) || 0,
+        )) + 1,
         tournament.participants,
       ),
     ],
   };
   return withDerivedScoreboardScores(next);
+}
+
+export function removeScoreboardRound(tournament: Tournament, roundId: string): Tournament {
+  if (tournament.format !== "scoreboard" || !tournament.scoreboardRounds.some((round) => round.id === roundId)) {
+    return tournament;
+  }
+  return withDerivedScoreboardScores({
+    ...invalidateScoreboardCompletion(tournament),
+    updatedAt: new Date().toISOString(),
+    scoreboardRounds: tournament.scoreboardRounds.filter((round) => round.id !== roundId),
+  });
 }
 
 export function updateScoreboardRoundScore(
@@ -447,7 +460,7 @@ function normalizeScoreboardRounds(tournament: Tournament): ScoreboardRound[] {
   const storedRounds = Array.isArray(tournament.scoreboardRounds)
     ? tournament.scoreboardRounds
     : [];
-  const sourceRounds = storedRounds.length > 0
+  const sourceRounds = Array.isArray(tournament.scoreboardRounds)
     ? storedRounds
     : [{
         id: "scoreboard-round-1",
